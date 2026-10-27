@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
+<title>Art Inspector — прототип</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: #000; color: #fff;
+               font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+               overflow: hidden; }
+
+  #app {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  #videoWrap {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+    background: #111;
+  }
+  video {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    background: #000;
+  }
+
+  /* Оверлей — обычный div, а не canvas */
+  #overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
+  }
+  #entropyBox {
+    display: none;
+    position: absolute;
+    border: 3px solid #00ff66;
+    box-sizing: border-box;
+    pointer-events: none;
+  }
+  #entropyBox .cross-h {
+    position: absolute; left: 50%; top: 50%;
+    width: 16px; height: 2px; background: #00ff66;
+    transform: translate(-50%, -50%);
+  }
+  #entropyBox .cross-v {
+    position: absolute; left: 50%; top: 50%;
+    width: 2px; height: 16px; background: #00ff66;
+    transform: translate(-50%, -50%);
+  }
+
+  #hint {
+    position: absolute; top: 12px; left: 12px; right: 12px;
+    padding: 8px 12px;
+    background: rgba(0,0,0,0.55);
+    border-radius: 8px;
+    font-size: 13px; line-height: 1.35;
+    z-index: 3;
+  }
+
+  #controls {
+    flex: 0 0 auto;
+    padding: 12px;
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
+    background: #000;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    z-index: 3;
+  }
+  button {
+    padding: 14px;
+    border-radius: 10px;
+    border: none;
+    font-size: 15px;
+    font-weight: 600;
+    background: #2c2c2e;
+    color: #fff;
+    -webkit-tap-highlight-color: transparent;
+  }
+  button:active { background: #3a3a3c; }
+  button.primary { background: #0a84ff; }
+  button.danger { background: #ff453a; }
+  button:disabled { opacity: 0.4; }
+
+  #status {
+    position: absolute;
+    bottom: 4px; left: 8px; right: 8px;
+    font-size: 11px;
+    color: #aaa;
+    text-align: center;
+    z-index: 3;
+    pointer-events: none;
+  }
+
+  #snapshotPreview {
+    position: absolute;
+    inset: 0;
+    background: #000;
+    display: none;
+    flex-direction: column;
+    z-index: 10;
+  }
+  #snapshotPreview img { flex: 1; object-fit: contain; width: 100%; min-height: 0; }
+  #snapshotPreview .bar {
+    padding: 12px;
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
+    display: flex; gap: 8px;
+  }
+  #snapshotPreview .bar button { flex: 1; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="videoWrap">
+    <video id="video" playsinline autoplay muted></video>
+    <div id="overlay">
+      <div id="entropyBox">
+        <div class="cross-h"></div>
+        <div class="cross-v"></div>
+      </div>
+    </div>
+    <div id="hint">Нажмите «Старт». Медленно приближайте телефон круговыми движениями. Зелёный квадрат — самый информативный участок.</div>
+    <div id="status"></div>
+  </div>
+  <div id="controls">
+    <button id="btnStart" class="primary">Старт камеры</button>
+    <button id="btnTorch" disabled>Фонарик</button>
+    <button id="btnRecord" disabled>Запись видео</button>
+    <button id="btnSnapshot" disabled>Снимок</button>
+  </div>
+  <div id="snapshotPreview">
+    <img id="snapshotImg" alt="snapshot">
+    <div class="bar">
+      <button id="btnDownload" class="primary">Скачать</button>
+      <button id="btnClose">Закрыть</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const video     = document.getElementById('video');
+  const overlay   = document.getElementById('overlay');
+  const entropyBox = document.getElementById('entropyBox');
+  const hint      = document.getElementById('hint');
+  const status    = document.getElementById('status');
+  const videoWrap = document.getElementById('videoWrap');
+  const btnStart  = document.getElementById('btnStart');
+  const btnTorch  = document.getElementById('btnTorch');
+  const btnRecord = document.getElementById('btnRecord');
+  const btnSnapshot = document.getElementById('btnSnapshot');
+  const snapshotPreview = document.getElementById('snapshotPreview');
+  const snapshotImg = document.getElementById('snapshotImg');
+  const btnDownload = document.getElementById('btnDownload');
+  const btnClose  = document.getElementById('btnClose');
+
+  // analysis canvas (скрытый)
+  let analysisCanvas = document.createElement('canvas');
+  let analysisCtx = analysisCanvas.getContext('2d', { willReadFrequently: true });
+
+  let stream = null;
+  let videoTrack = null;
+  let recorder = null;
+  let recordedChunks = [];
+  let analysisTimer = null;
+  let lastEntropyBox = null;   // { fx, fy, fw, fh, entropy } в долях 0..1
+  let torchOn = false;
+  let rafRunning = false;
+
+  // ---------- Камера ----------
+  async function startCamera() {
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+        audio: false
+      });
+      video.srcObject = stream;
+      videoTrack = stream.getVideoTracks()[0];
+
+      // Дождёмся, пока видео получит реальные размеры
+      await new Promise((resolve) => {
+        const check = () => {
+          if (video.videoWidth > 0 && video.videoHeight > 0) resolve();
+          else setTimeout(check, 100);
+        };
+        check();
+      });
+
+      try {
+        const caps = videoTrack.getCapabilities?.() || {};
+        const constraints = {};
+        if (caps.focusMode?.includes('continuous')) constraints.focusMode = 'continuous';
+        if (Object.keys(constraints).length) await videoTrack.applyConstraints(constraints);
+      } catch (e) { /* ignore */ }
+
+      btnStart.disabled = true;
+      btnTorch.disabled = false;
+      btnRecord.disabled = false;
+      btnSnapshot.disabled = false;
+      hint.textContent = 'Камера активна. Включите фонарик и медленно приближайтесь круговыми движениями.';
+
+      startAnalysisLoop();
+      startOverlayLoop();
+    } catch (err) {
+      hint.textContent = 'Ошибка доступа к камере: ' + err.message;
+      console.error(err);
+    }
+  }
+
+  // ---------- Фонарик ----------
+  async function toggleTorch() {
+    if (!videoTrack) return;
+    try {
+      const caps = videoTrack.getCapabilities?.() || {};
+      if (!caps.torch) {
+        hint.textContent = 'Фонарик через браузер недоступен на iPhone. Включите его вручную: Пункт управления → Фонарик.';
+        return;
+      }
+      torchOn = !torchOn;
+      await videoTrack.applyConstraints({ advanced: [{ torch: torchOn }] });
+      btnTorch.textContent = torchOn ? 'Фонарик ВКЛ' : 'Фонарик';
+    } catch (err) {
+      hint.textContent = 'Не удалось включить фонарик: ' + err.message;
+    }
+  }
+
+  // ---------- Анализ ----------
+  function startAnalysisLoop() {
+    if (analysisTimer) clearInterval(analysisTimer);
+    analysisTimer = setInterval(analyzeFrame, 250);
+  }
+
+  function analyzeFrame() {
+    if (!video.videoWidth || !video.videoHeight) {
+      status.textContent = 'Ожидание видеопотока…';
+      return;
+    }
+
+    const targetW = 256;
+    const scale = targetW / video.videoWidth;
+    const targetH = Math.max(1, Math.round(video.videoHeight * scale));
+
+    if (analysisCanvas.width !== targetW || analysisCanvas.height !== targetH) {
+      analysisCanvas.width = targetW;
+      analysisCanvas.height = targetH;
+    }
+
+    try {
+      analysisCtx.drawImage(video, 0, 0, targetW, targetH);
+    } catch (e) {
+      status.textContent = 'drawImage error: ' + e.message;
+      return;
+    }
+
+    let imgData;
+    try {
+      imgData = analysisCtx.getImageData(0, 0, targetW, targetH);
+    } catch (e) {
+      // Пересоздаём canvas и пробуем ещё раз
+      analysisCanvas = document.createElement('canvas');
+      analysisCanvas.width = targetW;
+      analysisCanvas.height = targetH;
+      analysisCtx = analysisCanvas.getContext('2d', { willReadFrequently: true });
+      try {
+        analysisCtx.drawImage(video, 0, 0, targetW, targetH);
+        imgData = analysisCtx.getImageData(0, 0, targetW, targetH);
+      } catch (e2) {
+        status.textContent = 'getImageData error: ' + e2.message;
+        return;
+      }
+    }
+    const data = imgData.data;
+
+    const blockSize = 32;
+    const cols = Math.floor(targetW / blockSize);
+    const rows = Math.floor(targetH / blockSize);
+    if (cols < 1 || rows < 1) { status.textContent = 'Слишком маленький кадр'; return; }
+
+    let bestEntropy = -1;
+    let bestBlock = null;
+
+    for (let by = 0; by < rows; by++) {
+      for (let bx = 0; bx < cols; bx++) {
+        const hist = new Float32Array(256);
+        let count = 0;
+        for (let y = 0; y < blockSize; y++) {
+          for (let x = 0; x < blockSize; x++) {
+            const px = bx * blockSize + x;
+            const py = by * blockSize + y;
+            const idx = (py * targetW + px) * 4;
+            const lum = (0.299*data[idx] + 0.587*data[idx+1] + 0.114*data[idx+2]) | 0;
+            hist[lum]++; count++;
+          }
+        }
+        let entropy = 0;
+        for (let i = 0; i < 256; i++) {
+          if (hist[i] > 0) { const p = hist[i] / count; entropy -= p * Math.log2(p); }
+        }
+        if (entropy > bestEntropy) {
+          bestEntropy = entropy;
+          bestBlock = { bx, by };
+        }
+      }
+    }
+
+    if (!bestBlock) { status.textContent = 'Блок не найден'; return; }
+
+    lastEntropyBox = {
+      fx: (bestBlock.bx * blockSize) / targetW,
+      fy: (bestBlock.by * blockSize) / targetH,
+      fw: blockSize / targetW,
+      fh: blockSize / targetH,
+      entropy: bestEntropy
+    };
+
+    status.textContent = `Энтропия: ${bestEntropy.toFixed(2)} бит | приближайтесь к зелёному квадрату`;
+  }
+
+  // ---------- Отрисовка квадрата (div) ----------
+  function drawOverlay() {
+    if (!lastEntropyBox) {
+      entropyBox.style.display = 'none';
+      return;
+    }
+    const cw = videoWrap.clientWidth;
+    const ch = videoWrap.clientHeight;
+    if (!cw || !ch) return;   // layout ещё не готов
+
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
+    if (!vw || !vh) return;
+
+    // object-fit: cover
+    const va = vw / vh, ca = cw / ch;
+    let drawW, drawH, offX, offY;
+    if (va > ca) { drawH = ch; drawW = ch * va; offX = (cw - drawW) / 2; offY = 0; }
+    else         { drawW = cw; drawH = cw / va; offX = 0; offY = (ch - drawH) / 2; }
+
+    const x = offX + lastEntropyBox.fx * drawW;
+    const y = offY + lastEntropyBox.fy * drawH;
+    const w = lastEntropyBox.fw * drawW;
+    const h = lastEntropyBox.fh * drawH;
+
+    entropyBox.style.display = 'block';
+    entropyBox.style.left   = x + 'px';
+    entropyBox.style.top    = y + 'px';
+    entropyBox.style.width  = w + 'px';
+    entropyBox.style.height = h + 'px';
+  }
+
+  function startOverlayLoop() {
+    if (rafRunning) return;
+    rafRunning = true;
+    const loop = () => {
+      drawOverlay();
+      requestAnimationFrame(loop);
+    };
+    requestAnimationFrame(loop);
+  }
+
+  // ---------- Запись видео (опция) ----------
+  function startRecording() {
+    if (!stream) return;
+    recordedChunks = [];
+    let mimeType = '';
+    const candidates = ['video/mp4;codecs=h264', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm'];
+    for (const c of candidates) {
+      if (MediaRecorder.isTypeSupported(c)) { mimeType = c; break; }
+    }
+    try {
+      recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    } catch (e) {
+      hint.textContent = 'MediaRecorder не поддерживается: ' + e.message;
+      return;
+    }
+    recorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
+    recorder.onstop = () => {
+      const blob = new Blob(recordedChunks, { type: recorder.mimeType });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `art-video-${Date.now()}.${blob.type.includes('mp4') ? 'mp4' : 'webm'}`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+      hint.textContent = 'Видео сохранено.';
+    };
+    recorder.start();
+    btnRecord.textContent = 'Стоп';
+    btnRecord.classList.add('danger');
+    btnRecord.onclick = stopRecording;
+  }
+
+  function stopRecording() {
+    if (recorder && recorder.state !== 'inactive') recorder.stop();
+    btnRecord.textContent = 'Запись видео';
+    btnRecord.classList.remove('danger');
+    btnRecord.onclick = startRecording;
+  }
+
+  // ---------- Снимок ----------
+  async function takeSnapshot() {
+    if (!videoTrack || !video.videoWidth) return;
+    try {
+      const caps = videoTrack.getCapabilities?.() || {};
+      const constraints = {};
+      if (caps.width?.max)  constraints.width  = { ideal: caps.width.max };
+      if (caps.height?.max) constraints.height = { ideal: caps.height.max };
+      if (Object.keys(constraints).length) await videoTrack.applyConstraints(constraints);
+    } catch (e) { /* ignore */ }
+    await new Promise(r => setTimeout(r, 300));
+
+    const c = document.createElement('canvas');
+    c.width = video.videoWidth;
+    c.height = video.videoHeight;
+    const cx = c.getContext('2d');
+    cx.drawImage(video, 0, 0, c.width, c.height);
+
+    if (lastEntropyBox) {
+      const x = lastEntropyBox.fx * c.width;
+      const y = lastEntropyBox.fy * c.height;
+      const w = lastEntropyBox.fw * c.width;
+      const h = lastEntropyBox.fh * c.height;
+      cx.strokeStyle = '#00ff66';
+      cx.lineWidth = Math.max(2, c.width / 400);
+      cx.strokeRect(x, y, w, h);
+      cx.beginPath();
+      cx.moveTo(x + w/2 - 12, y + h/2); cx.lineTo(x + w/2 + 12, y + h/2);
+      cx.moveTo(x + w/2, y + h/2 - 12); cx.lineTo(x + w/2, y + h/2 + 12);
+      cx.stroke();
+    }
+
+    const dataUrl = c.toDataURL('image/jpeg', 0.95);
+    snapshotImg.src = dataUrl;
+    snapshotPreview.style.display = 'flex';
+    btnDownload.onclick = () => {
+      const a = document.createElement('a');
+      a.href = dataUrl;
+      a.download = `art-snapshot-${Date.now()}.jpg`;
+      a.click();
+    };
+  }
+
+  // ---------- Обработчики ----------
+  btnStart.onclick = startCamera;
+  btnTorch.onclick = toggleTorch;
+  btnRecord.onclick = startRecording;
+  btnSnapshot.onclick = takeSnapshot;
+  btnClose.onclick = () => { snapshotPreview.style.display = 'none'; };
+
+  window.addEventListener('resize', () => { if (lastEntropyBox) drawOverlay(); });
+  window.addEventListener('orientationchange', () => { setTimeout(drawOverlay, 300); });
+})();
+</script>
+</body>
+</html>
