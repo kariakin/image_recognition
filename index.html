@@ -336,31 +336,39 @@
   function startAnalysis() { stopAnalysis(); analysisTimer = setInterval(onAnalysisTick, 300); }
   function stopAnalysis() { if (analysisTimer) { clearInterval(analysisTimer); analysisTimer = null; } }
 
-  function onAnalysisTick() {
-    if (!video.videoWidth) return;
+  let detectCounter = 0;
 
-    if (state === 'detect') {
-      const det = detectPainting();
-      if (det) {
-        objectBoxFrac = det;
-        setHint(`Картина обнаружена (${Math.round(det.areaFrac*100)}%). Приближайтесь.`);
-        if (det.areaFrac >= 0.70) {
-          globalFeatures = extractGlobalFeatures();
-          if (mode === 'verify') {
-            handleVerifyLookup();
-          } else {
-            state = 'entropy';
-            setHint('Ищем самую информативную зону…');
-          }
-        }
-      } else {
-        setHint('Наведите камеру на картину…');
-      }
-      return;
+function onAnalysisTick() {
+  if (!video.videoWidth) return;
+
+  // Детекция картины — ВСЕГДА, а не только в detect
+  if (++detectCounter % 3 === 0) {
+    const det = detectPainting();
+    if (det) {
+      objectBoxFrac = det;
     }
-
-    if (state === 'entropy') computeEntropyBox();
   }
+
+  if (state === 'detect') {
+    if (objectBoxFrac) {
+      setHint(`Картина обнаружена (${Math.round(objectBoxFrac.areaFrac*100)}%). Приближайтесь.`);
+      if (objectBoxFrac.areaFrac >= 0.70) {
+        globalFeatures = extractGlobalFeatures();
+        if (mode === 'verify') {
+          handleVerifyLookup();
+        } else {
+          state = 'entropy';
+          setHint('Ищем самую информативную зону…');
+        }
+      }
+    } else {
+      setHint('Наведите камеру на картину…');
+    }
+    return;
+  }
+
+  if (state === 'entropy') computeEntropyBox();
+}
 
   function extractGlobalFeatures() {
     const W = 256, H = Math.max(1, Math.round(256 * video.videoHeight / video.videoWidth));
