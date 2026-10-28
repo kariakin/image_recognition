@@ -550,12 +550,22 @@ function computeEntropyBox() {
   ];
 
   function positionEntropyBoxForShot(index) {
-    if (!lastEntropyBox || !lastEntropyBox._base) return;
-    const off = SHOT_OFFSETS[index];
-    const base = lastEntropyBox._base;
-    lastEntropyBox.fx = base.fx + off.dx * lastEntropyBox.fw;
-    lastEntropyBox.fy = base.fy + off.dy * lastEntropyBox.fh;
-  }
+  if (!lastEntropyBox || !lastEntropyBox._base) return;
+  const off = SHOT_OFFSETS[index];
+  const base = lastEntropyBox._base;
+  // смещаем якорь в долях картины на половину размера зоны
+  const shifted = {
+    fx: base.fx + off.dx * base.fw,
+    fy: base.fy + off.dy * base.fh,
+    fw: base.fw,
+    fh: base.fh
+  };
+  const cur = paintingToFrame(shifted.fx, shifted.fy, shifted.fw, shifted.fh);
+  lastEntropyBox.fx = cur.fx;
+  lastEntropyBox.fy = cur.fy;
+  lastEntropyBox.fw = cur.fw;
+  lastEntropyBox.fh = cur.fh;
+}
 
   async function onShot() {
     if (state === 'entropy') {
