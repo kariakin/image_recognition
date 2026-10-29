@@ -389,75 +389,211 @@ let lastRefW = 0, lastRefH = 0;
 
 function refreshEntropyBoxFromBase() {
   if (!lastEntropyBox || !lastEntropyBox._base) return;
+  if (!window.cvReady || !window.cv) return; // ждём OpenCV
 
-  // 1. грубое предсказание по objectBoxFrac
+  const cv = window.cv;
+
+  // 1. Грубое предсказание по objectBoxFrac
   const pred = paintingToFrame(
     lastEntropyBox._base.fx, lastEntropyBox._base.fy,
     lastEntropyBox._base.fw, lastEntropyBox._base.fh
   );
-  let predCx = (pred.fx + pred.fw / 2) * video.videoWidth;
-  let predCy = (pred.fy + pred.fh / 2) * video.videoHeight;
-  let predW = pred.fw * video.videoWidth;
-  let predH = pred.fh * video.videoHeight;
+  const vw = video.videoWidth, vh = video.videoHeight;
+  let predX = pred.fx * vw;
+  let predY = pred.fy * vh;
+  let predW = pred.fw * vw;
+  let predH = pred.fh * vh;
 
-  // 2. точная привязка по эталону
-  let refFrag = null, refW = 0, refH = 0;
+  // защита от вырожденных размеров
+  predW = Math.max(32, Math.min(predW, vw * 0.8));
+  predH = Math.max(32, Math.min(predH, vh * 0.8));
+
+  // 2. Выбираем эталон
+  let refData = null, refW = 0, refH = 0;
   if (mode === 'verify' && verifyBase && verifyBase.referenceFragment) {
-    refFrag = new Uint8ClampedArray(verifyBase.referenceFragment);
+    refData = new Uint8ClampedArray(verifyBase.referenceFragment);
     refW = verifyBase.refWidth; refH = verifyBase.refHeight;
   } else if (lastRefFragment) {
-    refFrag = lastRefFragment; refW = lastRefW; refH = lastRefH;
+    refData = lastRefFragment; refW = lastRefW; refH = lastRefH;
   }
 
-  if (refFrag) {
-    // масштабируем эталон под предсказанный размер (он меняется при зуме)
-    const scaled = document.createElement('canvas');
-    scaled.width = Math.max(16, Math.round(predW));
-    scaled.height = Math.max(16, Math.round(predH));
-    const sctx = scaled.getContext('2d', { willReadFrequently: true });
-    const src = document.createElement('canvas');
-    src.width = refW; src.height = refH;
-    src.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(refFrag), refW, refH), 0, 0);
-    sctx.drawImage(src, 0, 0, scaled.width, scaled.height);
-    const scaledData = sctx.getImageData(0, 0, scaled.width, scaled.height);
+  if (!refData) {
+    // эталона ещё нет — просто ставим по предсказанию
+    writeEntropyBox(predX, predY, predW, predH, vw, vh);
+    return;
+  }
 
-    const found = locateFragmentInFrame(
-      scaledData.data, scaled.width, scaled.height,
-      predCx, predCy,
-      Math.round(Math.max(predW, predH) * 0.35) // окно поиска — 35% размера фрагмента
+  // 3. ORB-матчинг: эталон vs область поиска в кадре
+  try {
+    // 3a. готовим эталон (масштабируем под predW/predH)
+    const refCanvas = document.createElement('canvas');
+    refCanvas.width = refW; refCanvas.height = refH;
+    refCanvas.getContext('2d').putImageData(
+      new ImageData(new Uint8ClampedArray(refData), refW, refH), 0, 0
     );
-    if (found.score > 0.5) {
-      predCx = found.cx; predCy = found.cy;
-      // уточняем размер (если зум изменился, размер мог остаться прежним — не критично)
-    }
-  }
+    const refScaled = document.createElement('canvas');
+    refScaled.width = Math.max(16, Math.round(predW));
+    refScaled.height = Math.max(16, Math.round(predH));
+    const rsCtx = refScaled.getContext('2d', { willReadFrequently: true });
+    rsCtx.drawImage(refCanvas, 0, 0, refScaled.width, refScaled.height);
 
-  // 3. записываем итоговые координаты в lastEntropyBox (в долях кадра)
-  const vw = video.videoWidth, vh = video.videoHeight;
-  lastEntropyBox.fx = (predCx - predW/2) / vw;
-  lastEntropyBox.fy = (predCy - predH/2) / vh;
-  lastEntropyBox.fw = predW / vw;
-  lastEntropyBox.fh = predH / vh;
+    // 3b. вырезаем область поиска из кадра (в 1.6 раза больше предсказания)
+    const padX = Math.round(predW * 0.3);
+    const padY = Math.round(predH * 0.3);
+    const sx = Math.max(0, Math.round(predX - padX));
+    const sy = Math.max(0, Math.round(predY - padY));
+    const ex = Math.min(vw, Math.round(predX + predW + padX));
+    const ey = Math.min(vh, Math.round(predY + predH + padY));
+    const sw = ex - sx, sh = ey - sy;
+    if (sw < 16 || sh < 16) { writeEntropyBox(predX, predY, predW, predH, vw, vh); return; }
+
+    const searchCanvas = document.createElement('canvas');
+    searchCanvas.width = sw; searchCanvas.height = sh;
+    searchCanvas.getContext('2d').drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh);
+
+    // 3c. ORB detect & compute на эталоне и области поиска
+    const refMat = cv.imread(refScaled);
+    const searchMat = cv.imread(searchCanvas);
+    const refGray = new cv.Mat();
+    const searchGray = new cv.Mat();
+    cv.cvtColor(refMat, refGray, cv.COLOR_RGBA2GRAY);
+    cv.cvtColor(searchMat, searchGray, cv.COLOR_RGBA2GRAY);
+
+    const orb = new cv.ORB(1000); // ограничим число фич — на маленьком патче их и так немного
+    const kp1 = new cv.KeyPointVector();
+    const des1 = new cv.Mat();
+    const kp2 = new cv.KeyPointVector();
+    const des2 = new cv.Mat();
+    orb.detectAndCompute(refGray, new cv.Mat(), kp1, des1);
+    orb.detectAndCompute(searchGray, new cv.Mat(), kp2, des2);
+
+    if (des1.rows < 4 || des2.rows < 4) {
+      // слишком мало фич — откат к предсказанию
+      cleanupOrb(refMat, searchMat, refGray, searchGray, kp1, des1, kp2, des2, orb);
+      writeEntropyBox(predX, predY, predW, predH, vw, vh);
+      return;
+    }
+
+    // 3d. матчинг BFMatcher + ratio test
+    const bf = new cv.BFMatcher(cv.NORM_HAMMING, false);
+    const matches = new cv.DMatchVectorVector();
+    bf.knnMatch(des1, des2, matches, 2);
+
+    const goodSrc = [], goodDst = [];
+    for (let i = 0; i < matches.size(); i++) {
+      const m = matches.get(i);
+      if (m.size() < 2) continue;
+      const m0 = m.get(0), m1 = m.get(1);
+      if (m0.distance < 0.75 * m1.distance) {
+        goodSrc.push(kp1.get(m0.queryIdx).pt);
+        goodDst.push(kp2.get(m0.trainIdx).pt);
+      }
+    }
+
+    if (goodSrc.length < 8) {
+      cleanupOrb(refMat, searchMat, refGray, searchGray, kp1, des1, kp2, des2, orb);
+      matches.delete();
+      writeEntropyBox(predX, predY, predW, predH, vw, vh);
+      return;
+    }
+
+    // 3e. гомография: точки эталона -> точки области поиска
+    const srcMat = cv.matFromArray(goodSrc.length, 1, cv.CV_32FC2,
+      goodSrc.flatMap(p => [p.x, p.y]));
+    const dstMat = cv.matFromArray(goodDst.length, 1, cv.CV_32FC2,
+      goodDst.flatMap(p => [p.x, p.y]));
+    const mask = new cv.Mat();
+    const H = cv.findHomography(srcMat, dstMat, cv.RANSAC, 3, mask);
+
+    let inliers = 0;
+    for (let i = 0; i < mask.rows; i++) if (mask.data[i]) inliers++;
+
+    if (H.rows === 3 && inliers >= 6) {
+      // 3f. проецируем углы эталона в кадр
+      const corners = cv.matFromArray(4, 1, cv.CV_32FC2, [
+        0, 0,
+        refScaled.width, 0,
+        refScaled.width, refScaled.height,
+        0, refScaled.height
+      ]);
+      const projected = new cv.Mat();
+      cv.perspectiveTransform(corners, projected, H);
+
+      // координаты в системе области поиска -> в системе кадра
+      const pts = [];
+      for (let i = 0; i < 4; i++) {
+        pts.push({
+          x: projected.data32F[i*2] + sx,
+          y: projected.data32F[i*2+1] + sy
+        });
+      }
+      const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
+      const newX = Math.min(...xs), newY = Math.min(...ys);
+      const newW = Math.max(...xs) - newX, newH = Math.max(...ys) - newY;
+
+      // проверка адекватности (не улетели за пределы кадра, размер не абсурдный)
+      if (newW > 16 && newH > 16 && newW < vw * 0.9 && newH < vh * 0.9) {
+        writeEntropyBox(newX, newY, newW, newH, vw, vh);
+      } else {
+        writeEntropyBox(predX, predY, predW, predH, vw, vh);
+      }
+
+      corners.delete(); projected.delete();
+    } else {
+      writeEntropyBox(predX, predY, predW, predH, vw, vh);
+    }
+
+    // cleanup
+    srcMat.delete(); dstMat.delete(); mask.delete();
+    if (H) H.delete();
+    matches.delete();
+    cleanupOrb(refMat, searchMat, refGray, searchGray, kp1, des1, kp2, des2, orb);
+
+  } catch (e) {
+    // при любой ошибке OpenCV — откат к предсказанию
+    writeEntropyBox(predX, predY, predW, predH, vw, vh);
+  }
 
   // 4. обновляем эталон для следующего тика (только в protect)
   if (mode === 'protect') {
-    try {
-      const c = document.createElement('canvas');
-      c.width = vw; c.height = vh;
-      c.getContext('2d').drawImage(video, 0, 0, c.width, c.height);
-      const sx = Math.max(0, Math.round(predCx - predW/2));
-      const sy = Math.max(0, Math.round(predCy - predH/2));
-      const sw = Math.min(Math.round(predW), vw - sx);
-      const sh = Math.min(Math.round(predH), vh - sy);
-      if (sw > 16 && sh > 16) {
-        const patch = document.createElement('canvas');
-        patch.width = sw; patch.height = sh;
-        patch.getContext('2d').drawImage(c, sx, sy, sw, sh, 0, 0, sw, sh);
-        const pd = patch.getContext('2d').getImageData(0, 0, sw, sh);
-        lastRefFragment = pd.data; lastRefW = sw; lastRefH = sh;
-      }
-    } catch (e) {}
+    updateRefFragmentFromCurrent(predX, predY, predW, predH, vw, vh);
   }
+}
+
+// записать итоговые координаты в lastEntropyBox (доли кадра)
+function writeEntropyBox(x, y, w, h, vw, vh) {
+  lastEntropyBox.fx = x / vw;
+  lastEntropyBox.fy = y / vh;
+  lastEntropyBox.fw = w / vw;
+  lastEntropyBox.fh = h / vh;
+}
+
+// очистка ORB-объектов
+function cleanupOrb(refMat, searchMat, refGray, searchGray, kp1, des1, kp2, des2, orb) {
+  try {
+    refMat.delete(); searchMat.delete();
+    refGray.delete(); searchGray.delete();
+    kp1.delete(); des1.delete();
+    kp2.delete(); des2.delete();
+    orb.delete();
+  } catch (e) {}
+}
+
+// обновить эталонный патч из текущего кадра (для protect)
+function updateRefFragmentFromCurrent(x, y, w, h, vw, vh) {
+  try {
+    const sx = Math.max(0, Math.round(x));
+    const sy = Math.max(0, Math.round(y));
+    const sw = Math.min(Math.round(w), vw - sx);
+    const sh = Math.min(Math.round(h), vh - sy);
+    if (sw < 16 || sh < 16) return;
+    const c = document.createElement('canvas');
+    c.width = sw; c.height = sh;
+    c.getContext('2d').drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh);
+    const d = c.getContext('2d').getImageData(0, 0, sw, sh);
+    lastRefFragment = d.data;
+    lastRefW = sw; lastRefH = sh;
+  } catch (e) {}
 }
 
   // ---------- Отрисовка ----------
@@ -610,7 +746,7 @@ function refreshEntropyBoxFromBase() {
      _base: { fx: zc.fx, fy: zc.fy, fw: zc.fw, fh: zc.fh }
      };
 // сразу позиционируем по эталону из базы
-    refreshEntropyBoxFromBase();
+    
 // если не нашли по фичам — оставляем предсказание по objectBoxFrac
     state = 'shoot_ready';
     btnShot.disabled = false;
@@ -623,7 +759,7 @@ function refreshEntropyBoxFromBase() {
       lastEntropyBox._base.fw = inPainting.fw;
       lastEntropyBox._base.fh = inPainting.fh;
       lastEntropyBox.entropy = best;
-      refreshEntropyBoxFromBase();
+      
     }
 
     setStatus(`Энтропия: ${best.toFixed(2)} бит`);
