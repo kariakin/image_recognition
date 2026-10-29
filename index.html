@@ -62,12 +62,14 @@
 <body>
 <div id="app">
 
+  <!-- Главный экран -->
   <div id="home">
     <h1>Art Inspector</h1>
     <button id="btnProtect" class="big">Защита</button>
     <button id="btnVerify"  class="big">Проверка</button>
   </div>
 
+  <!-- Экран камеры -->
   <div id="camera">
     <div id="videoWrap">
       <video id="video" playsinline autoplay muted></video>
@@ -85,6 +87,7 @@
     </div>
   </div>
 
+  <!-- Модалка -->
   <div id="modal">
     <div class="card">
       <h2 id="modalTitle"></h2>
@@ -94,9 +97,9 @@
     </div>
   </div>
 </div>
-
 <script>
 (() => {
+  // ---------- DOM ----------
   const home = document.getElementById('home');
   const cameraEl = document.getElementById('camera');
   const video = document.getElementById('video');
@@ -118,14 +121,14 @@
 
   // ---------- Состояние ----------
   let stream = null, videoTrack = null, torchOn = false;
-  let mode = null;              // 'protect' | 'verify'
-  let state = 'idle';           // 'detect' | 'entropy' | 'shoot' | 'done'
+  let mode = null;            // 'protect' | 'verify'
+  let state = 'idle';         // 'detect' | 'entropy' | 'shoot_ready' | 'shoot' | 'done'
   let analysisTimer = null, rafRunning = false;
 
-  let objectBoxFrac = null;
-  let lastEntropyBox = null;
+  let objectBoxFrac = null;   // {fx,fy,fw,fh,areaFrac} в долях кадра
+  let lastEntropyBox = null;  // {fx,fy,fw,fh,entropy,_base:{fx,fy,fw,fh}} — fx..fh в долях кадра, _base в долях картины
   let globalFeatures = null;
-  let verifyBase = null;        // запись из базы для проверки
+  let verifyBase = null;
 
   let shots = [];
   let targetIndex = 0;
@@ -291,7 +294,7 @@
     }
   }
 
-  // ---------- Отрисовка ----------
+  // ---------- Геометрия ----------
   function computeGeometry() {
     const cw = videoWrap.clientWidth, ch = videoWrap.clientHeight;
     const vw = video.videoWidth, vh = video.videoHeight;
@@ -303,6 +306,30 @@
     return { cw, ch, drawW, drawH, offX, offY };
   }
 
+  // координаты в долях кадра → в долях картины
+  function frameToPainting(fx, fy, fw, fh) {
+    if (!objectBoxFrac) return { fx, fy, fw, fh };
+    const ob = objectBoxFrac;
+    return { fx: (fx - ob.fx) / ob.fw, fy: (fy - ob.fy) / ob.fh,
+             fw: fw / ob.fw, fh: fh / ob.fh };
+  }
+  // координаты в долях картины → в долях кадра
+  function paintingToFrame(px, py, pw, ph) {
+    if (!objectBoxFrac) return { fx: px, fy: py, fw: pw, fh: ph };
+    const ob = objectBoxFrac;
+    return { fx: ob.fx + px * ob.fw, fy: ob.fy + py * ob.fh,
+             fw: pw * ob.fw, fh: ph * ob.fh };
+  }
+  // обновить lastEntropyBox.fx..fh (в долях кадра) из _base (в долях картины)
+  function refreshEntropyBoxFromBase() {
+    if (!lastEntropyBox || !lastEntropyBox._base) return;
+    const cur = paintingToFrame(lastEntropyBox._base.fx, lastEntropyBox._base.fy,
+                                lastEntropyBox._base.fw, lastEntropyBox._base.fh);
+    lastEntropyBox.fx = cur.fx; lastEntropyBox.fy = cur.fy;
+    lastEntropyBox.fw = cur.fw; lastEntropyBox.fh = cur.fh;
+  }
+
+  // ---------- Отрисовка ----------
   function renderBoxes() {
     const g = computeGeometry();
     if (!g) return;
@@ -313,6 +340,9 @@
       objectBox.style.width  = (objectBoxFrac.fw * g.drawW) + 'px';
       objectBox.style.height = (objectBoxFrac.fh * g.drawH) + 'px';
     } else objectBox.style.display = 'none';
+
+    // всегда пересчитываем энтропийную рамку из _base, чтобы она следовала за картиной
+    if (lastEntropyBox) refreshEntropyBoxFromBase();
 
     if (lastEntropyBox) {
       entropyBox.style.display = 'block';
@@ -338,37 +368,36 @@
 
   let detectCounter = 0;
 
-function onAnalysisTick() {
-  if (!video.videoWidth) return;
+  function onAnalysisTick() {
+    if (!video.videoWidth) return;
 
-  // Детекция картины — ВСЕГДА, а не только в detect
-  if (++detectCounter % 3 === 0) {
-    const det = detectPainting();
-    if (det) {
-      objectBoxFrac = det;
+    // Детекция картины — всегда, чтобы objectBoxFrac не замирал
+    if (++detectCounter % 3 === 0) {
+      const det = detectPainting();
+      if (det) objectBoxFrac = det;
     }
-  }
 
-  if (state === 'detect') {
-    if (objectBoxFrac) {
-      setHint(`Картина обнаружена (${Math.round(objectBoxFrac.areaFrac*100)}%). Приближайтесь.`);
-      if (objectBoxFrac.areaFrac >= 0.70) {
-        globalFeatures = extractGlobalFeatures();
-        if (mode === 'verify') {
-          handleVerifyLookup();
-        } else {
-          state = 'entropy';
-          setHint('Ищем самую информативную зону…');
+    if (state === 'detect') {
+      if (objectBoxFrac) {
+        setHint(`Картина обнаружена (${Math.round(objectBoxFrac.areaFrac*100)}%). Приближайтесь.`);
+        if (objectBoxFrac.areaFrac >= 0.70) {
+          globalFeatures = extractGlobalFeatures();
+          if (mode === 'verify') {
+            handleVerifyLookup();
+          } else {
+            state = 'entropy';
+            setHint('Ищем самую информативную зону…');
+          }
         }
+      } else {
+        setHint('Наведите камеру на картину…');
       }
-    } else {
-      setHint('Наведите камеру на картину…');
+      return;
     }
-    return;
-  }
 
-  if (state === 'entropy') computeEntropyBox();
-}
+    if (state === 'entropy') computeEntropyBox();
+    // shoot_ready / shoot: рамка стоит в _base, ничего не пересчитываем
+  }
 
   function extractGlobalFeatures() {
     const W = 256, H = Math.max(1, Math.round(256 * video.videoHeight / video.videoWidth));
@@ -390,132 +419,79 @@ function onAnalysisTick() {
     return out;
   }
 
-  // Перевод координат из долей кадра в доли картины (objectBoxFrac)
-function frameToPainting(fx, fy, fw, fh) {
-  if (!objectBoxFrac) return { fx, fy, fw, fh };
-  const ob = objectBoxFrac;
-  return {
-    fx: (fx - ob.fx) / ob.fw,
-    fy: (fy - ob.fy) / ob.fh,
-    fw: fw / ob.fw,
-    fh: fh / ob.fh
-  };
-}
+  function computeEntropyBox() {
+    const W = 256, H = Math.max(1, Math.round(256 * video.videoHeight / video.videoWidth));
+    if (analysisCanvas.width !== W || analysisCanvas.height !== H) {
+      analysisCanvas.width = W; analysisCanvas.height = H;
+    }
+    analysisCtx.drawImage(video, 0, 0, W, H);
+    let data;
+    try { data = analysisCtx.getImageData(0, 0, W, H).data; }
+    catch (e) { setStatus('getImageData error'); return; }
 
-// Перевод координат из долей картины в доли кадра
-function paintingToFrame(px, py, pw, ph) {
-  if (!objectBoxFrac) return { fx: px, fy: py, fw: pw, fh: ph };
-  const ob = objectBoxFrac;
-  return {
-    fx: ob.fx + px * ob.fw,
-    fy: ob.fy + py * ob.fh,
-    fw: pw * ob.fw,
-    fh: ph * ob.fh
-  };
-}
+    const blockSize = 32;
+    const cols = Math.floor(W/blockSize), rows = Math.floor(H/blockSize);
 
-function computeEntropyBox() {
-  const W = 256, H = Math.max(1, Math.round(256 * video.videoHeight / video.videoWidth));
-  if (analysisCanvas.width !== W || analysisCanvas.height !== H) {
-    analysisCanvas.width = W; analysisCanvas.height = H;
-  }
-  analysisCtx.drawImage(video, 0, 0, W, H);
-  let data;
-  try { data = analysisCtx.getImageData(0, 0, W, H).data; }
-  catch (e) { setStatus('getImageData error'); return; }
+    // окно поиска: если зона есть — вокруг её текущего положения в кадре, иначе весь кадр
+    let restrict;
+    if (!lastEntropyBox) {
+      restrict = { x0: 0, y0: 0, x1: 1, y1: 1 };
+    } else {
+      const cur = paintingToFrame(lastEntropyBox._base.fx, lastEntropyBox._base.fy,
+                                  lastEntropyBox._base.fw, lastEntropyBox._base.fh);
+      const pad = 0.5;
+      restrict = {
+        x0: Math.max(0, cur.fx - cur.fw * pad),
+        y0: Math.max(0, cur.fy - cur.fh * pad),
+        x1: Math.min(1, cur.fx + cur.fw * (1 + pad)),
+        y1: Math.min(1, cur.fy + cur.fh * (1 + pad))
+      };
+    }
 
-  const blockSize = 32;
-  const cols = Math.floor(W / blockSize);
-  const rows = Math.floor(H / blockSize);
-
-  // Границы поиска в долях КАДРА.
-  // Если зона ещё не зафиксирована — ищем по всему кадру.
-  // Если зафиксирована — ищем в окрестности её текущего положения (± половина размера зоны),
-  // чтобы зона могла немного «дышать» вслед за картиной, но не перескакивала.
-  let restrict;
-  if (!lastEntropyBox) {
-    restrict = { x0: 0, y0: 0, x1: 1, y1: 1 };
-  } else {
-    // текущее положение зоны в долях КАДРА (пересчитываем из долей картины)
-    const cur = paintingToFrame(lastEntropyBox._base.fx, lastEntropyBox._base.fy,
-                                lastEntropyBox.fw, lastEntropyBox.fh);
-    const pad = 0.5; // половина размера зоны — окно поиска
-    restrict = {
-      x0: Math.max(0, cur.fx - cur.fw * pad),
-      y0: Math.max(0, cur.fy - cur.fh * pad),
-      x1: Math.min(1, cur.fx + cur.fw * (1 + pad)),
-      y1: Math.min(1, cur.fy + cur.fh * (1 + pad))
-    };
-  }
-
-  let best = -1, bb = null;
-  for (let by = 0; by < rows; by++) {
-    for (let bx = 0; bx < cols; bx++) {
-      const fx = bx * blockSize / W;
-      const fy = by * blockSize / H;
-      const fw = blockSize / W;
-      const fh = blockSize / H;
-      const cx = fx + fw / 2;
-      const cy = fy + fh / 2;
+    let best = -1, bb = null;
+    for (let by = 0; by < rows; by++) for (let bx = 0; bx < cols; bx++) {
+      const fx = bx*blockSize/W, fy = by*blockSize/H;
+      const fw = blockSize/W, fh = blockSize/H;
+      const cx = fx + fw/2, cy = fy + fh/2;
       if (cx < restrict.x0 || cx > restrict.x1 || cy < restrict.y0 || cy > restrict.y1) continue;
-
-      const hist = new Float32Array(256);
-      let count = 0;
-      for (let y = 0; y < blockSize; y++) {
-        for (let x = 0; x < blockSize; x++) {
-          const px = bx * blockSize + x;
-          const py = by * blockSize + y;
-          const idx = (py * W + px) * 4;
-          const lum = (0.299*data[idx] + 0.587*data[idx+1] + 0.114*data[idx+2]) | 0;
-          hist[lum]++; count++;
-        }
+      const hist = new Float32Array(256); let count = 0;
+      for (let y = 0; y < blockSize; y++) for (let x = 0; x < blockSize; x++) {
+        const px = bx*blockSize + x, py = by*blockSize + y;
+        const idx = (py*W + px) * 4;
+        const lum = (0.299*data[idx] + 0.587*data[idx+1] + 0.114*data[idx+2]) | 0;
+        hist[lum]++; count++;
       }
       let ent = 0;
-      for (let i = 0; i < 256; i++) {
-        if (hist[i]) { const p = hist[i] / count; ent -= p * Math.log2(p); }
-      }
+      for (let i = 0; i < 256; i++) if (hist[i]) { const p = hist[i]/count; ent -= p*Math.log2(p); }
       if (ent > best) { best = ent; bb = { fx, fy, fw, fh }; }
     }
+    if (!bb) return;
+
+    const inPainting = frameToPainting(bb.fx, bb.fy, bb.fw, bb.fh);
+
+    if (!lastEntropyBox) {
+      lastEntropyBox = {
+        fx: bb.fx, fy: bb.fy, fw: bb.fw, fh: bb.fh,
+        entropy: best,
+        _base: inPainting
+      };
+    } else {
+      const a = 0.3;
+      lastEntropyBox._base.fx = lastEntropyBox._base.fx * (1 - a) + inPainting.fx * a;
+      lastEntropyBox._base.fy = lastEntropyBox._base.fy * (1 - a) + inPainting.fy * a;
+      lastEntropyBox._base.fw = inPainting.fw;
+      lastEntropyBox._base.fh = inPainting.fh;
+      lastEntropyBox.entropy = best;
+      refreshEntropyBoxFromBase();
+    }
+
+    setStatus(`Энтропия: ${best.toFixed(2)} бит`);
+    setHint('Приблизьтесь и нажмите «Фото». Рамка будет смещаться — двигайте камеру за ней.');
   }
 
-  if (!bb) return;
-
-  // Переводим найденный блок в доли КАРТИНЫ и сохраняем как _base.
-  // Это гарантирует, что зона привязана к фрагменту картины, а не к экрану.
-  const inPainting = frameToPainting(bb.fx, bb.fy, bb.fw, bb.fh);
-
-  if (!lastEntropyBox) {
-    // первое обнаружение
-    lastEntropyBox = {
-      fx: bb.fx, fy: bb.fy, fw: bb.fw, fh: bb.fh,   // текущие в долях кадра (для отрисовки)
-      entropy: best,
-      _base: inPainting                               // «якорь» в долях картины
-    };
-  } else {
-    // обновляем «якорь» (немного сглаживая, чтобы не дёргался)
-    const a = 0.3;
-    lastEntropyBox._base.fx = lastEntropyBox._base.fx * (1 - a) + inPainting.fx * a;
-    lastEntropyBox._base.fy = lastEntropyBox._base.fy * (1 - a) + inPainting.fy * a;
-    // размер зоны берём от текущего блока (он зависит от зума)
-    lastEntropyBox._base.fw = inPainting.fw;
-    lastEntropyBox._base.fh = inPainting.fh;
-    // и сразу пересчитываем текущее положение в долях кадра для отрисовки
-    const cur = paintingToFrame(lastEntropyBox._base.fx, lastEntropyBox._base.fy,
-                                lastEntropyBox._base.fw, lastEntropyBox._base.fh);
-    lastEntropyBox.fx = cur.fx;
-    lastEntropyBox.fy = cur.fy;
-    lastEntropyBox.fw = cur.fw;
-    lastEntropyBox.fh = cur.fh;
-    lastEntropyBox.entropy = best;
-  }
-
-  setStatus(`Энтропия: ${best.toFixed(2)} бит`);
-  setHint('Приблизьтесь и нажмите «Фото». Рамка будет смещаться — двигайте камеру за ней.');
-}
-
-  // ---------- Поиск базы в режиме «Проверка» ----------
+  // ---------- Проверка: поиск записи ----------
   async function handleVerifyLookup() {
-    state = 'shoot'; // временно блокируем анализ
+    state = 'shoot_ready';
     btnShot.disabled = true;
     setHint('Ищем картину в базе…');
     let list = [];
@@ -530,25 +506,27 @@ function computeEntropyBox() {
       const sim = cosine(globalFeatures, rec.globalFeatures);
       if (sim > bestSim) { bestSim = sim; best = rec; }
     }
-    if (!best || bestSim < 0.85) {
-      await showModal('Не найдено', `Совпадений в базе нет (лучшее сходство ${Math.max(0,bestSim*100).toFixed(1)}%).`);
+    if (!best) best = list[0];
+    if (!best.zoneCoords) {
+      await showModal('Ошибка', 'В записи нет координат контрольной зоны.');
       goHome();
       return;
     }
-    // нашли запись — показываем контрольную зону
     verifyBase = best;
     const zc = best.zoneCoords;
-    if (zc) {
-      lastEntropyBox = { fx: zc.fx, fy: zc.fy, fw: zc.fw, fh: zc.fh,
-                         entropy: 0, _base: { fx: zc.fx, fy: zc.fy } };
-    }
-    state = 'entropy';
+    lastEntropyBox = {
+      fx: 0, fy: 0, fw: 0, fh: 0,
+      entropy: 0,
+      _base: { fx: zc.fx, fy: zc.fy, fw: zc.fw, fh: zc.fh }
+    };
+    refreshEntropyBoxFromBase();
+    state = 'shoot_ready';
     btnShot.disabled = false;
     setHint(`Найдено: «${best.name}». Приблизьтесь к зелёной зоне и нажмите «Фото».`);
     setStatus(`Сходство глобальных фич: ${(bestSim*100).toFixed(1)}%`);
   }
 
-  // ---------- Съёмка 5 кадров по кнопке ----------
+  // ---------- Съёмка 5 кадров ----------
   const SHOT_OFFSETS = [
     { dx: 0,  dy: 0,  label: 'Кадр 1/5: рамка в центре. Нажмите «Фото».' },
     { dx: -0.5, dy: 0, label: 'Кадр 2/5: сдвиньте камеру ВЛЕВО, чтобы участок был под рамкой, и нажмите «Фото».' },
@@ -558,26 +536,37 @@ function computeEntropyBox() {
   ];
 
   function positionEntropyBoxForShot(index) {
-  if (!lastEntropyBox || !lastEntropyBox._base) return;
-  const off = SHOT_OFFSETS[index];
-  const base = lastEntropyBox._base;
-  // смещаем якорь в долях картины на половину размера зоны
-  const shifted = {
-    fx: base.fx + off.dx * base.fw,
-    fy: base.fy + off.dy * base.fh,
-    fw: base.fw,
-    fh: base.fh
-  };
-  const cur = paintingToFrame(shifted.fx, shifted.fy, shifted.fw, shifted.fh);
-  lastEntropyBox.fx = cur.fx;
-  lastEntropyBox.fy = cur.fy;
-  lastEntropyBox.fw = cur.fw;
-  lastEntropyBox.fh = cur.fh;
-}
+    if (!lastEntropyBox || !lastEntropyBox._base) return;
+    const off = SHOT_OFFSETS[index];
+    const base = lastEntropyBox._base;
+    const shifted = {
+      fx: base.fx + off.dx * base.fw,
+      fy: base.fy + off.dy * base.fh,
+      fw: base.fw,
+      fh: base.fh
+    };
+    const cur = paintingToFrame(shifted.fx, shifted.fy, shifted.fw, shifted.fh);
+    lastEntropyBox.fx = cur.fx; lastEntropyBox.fy = cur.fy;
+    lastEntropyBox.fw = cur.fw; lastEntropyBox.fh = cur.fh;
+  }
 
   async function onShot() {
     if (state === 'entropy') {
-      // первый клик — начинаем серию, делаем снимок №1
+      state = 'shoot';
+      targetIndex = 0;
+      shots = [];
+      stopAnalysis();
+      entropyBox.classList.add('target');
+      positionEntropyBoxForShot(0);
+      shots.push(capturePatchAtTarget());
+      targetIndex = 1;
+      positionEntropyBoxForShot(1);
+      setHint(SHOT_OFFSETS[1].label);
+      setStatus('Снимок 1 из 5');
+      return;
+    }
+    if (state === 'shoot_ready') {
+      // первый клик в проверке — старт серии
       state = 'shoot';
       targetIndex = 0;
       shots = [];
@@ -600,7 +589,6 @@ function computeEntropyBox() {
         setHint(SHOT_OFFSETS[targetIndex].label);
         return;
       }
-      // все 5 сняты
       btnShot.disabled = true;
       entropyBox.classList.remove('target');
       setHint('Обработка 5 снимков…');
@@ -623,6 +611,23 @@ function computeEntropyBox() {
     const pctx = patch.getContext('2d', { willReadFrequently: true });
     pctx.drawImage(c, sx, sy, sw, sh, 0, 0, 96, 96);
     return pctx.getImageData(0, 0, 96, 96);
+  }
+
+  function captureReferenceFragment256() {
+    const c = document.createElement('canvas');
+    c.width = video.videoWidth; c.height = video.videoHeight;
+    c.getContext('2d').drawImage(video, 0, 0, c.width, c.height);
+    const ob = objectBoxFrac;
+    const base = lastEntropyBox._base;
+    const sx = (ob.fx + base.fx * ob.fw) * c.width;
+    const sy = (ob.fy + base.fy * ob.fh) * c.height;
+    const sw = base.fw * ob.fw * c.width;
+    const sh = base.fh * ob.fh * c.height;
+    const out = document.createElement('canvas');
+    out.width = 256; out.height = 256;
+    const octx = out.getContext('2d', { willReadFrequently: true });
+    octx.drawImage(c, sx, sy, sw, sh, 0, 0, 256, 256);
+    return octx.getImageData(0, 0, 256, 256);
   }
 
   function buildHeightMap(shts) {
@@ -655,6 +660,60 @@ function computeEntropyBox() {
     return Math.sqrt(v / arr.length);
   }
 
+  // ---------- Выравнивание и корреляция ----------
+  function alignFragmentAffine(test, ref) {
+    const W = ref.width, H = ref.height;
+    const td = test.data, rd = ref.data;
+    const maxShift = 10;
+    let bestShift = { dx: 0, dy: 0 }, bestCorr = -1;
+    for (let dy = -maxShift; dy <= maxShift; dy += 2) {
+      for (let dx = -maxShift; dx <= maxShift; dx += 2) {
+        let sumT = 0, sumR = 0, sumTR = 0, sumT2 = 0, sumR2 = 0, n = 0;
+        for (let y = Math.max(0, -dy); y < Math.min(H, H - dy); y += 2) {
+          for (let x = Math.max(0, -dx); x < Math.min(W, W - dx); x += 2) {
+            const ti = ((y + dy) * W + (x + dx)) * 4;
+            const ri = (y * W + x) * 4;
+            const lt = 0.299*td[ti] + 0.587*td[ti+1] + 0.114*td[ti+2];
+            const lr = 0.299*rd[ri] + 0.587*rd[ri+1] + 0.114*rd[ri+2];
+            sumT += lt; sumR += lr; sumTR += lt*lr; sumT2 += lt*lt; sumR2 += lr*lr; n++;
+          }
+        }
+        if (n < 100) continue;
+        const num = n*sumTR - sumT*sumR;
+        const den = Math.sqrt((n*sumT2 - sumT*sumT) * (n*sumR2 - sumR*sumR)) + 1e-9;
+        const corr = num / den;
+        if (corr > bestCorr) { bestCorr = corr; bestShift = { dx, dy }; }
+      }
+    }
+    const out = new Uint8ClampedArray(W * H * 4);
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const tx = x + bestShift.dx, ty = y + bestShift.dy;
+        const di = (y * W + x) * 4;
+        if (tx >= 0 && tx < W && ty >= 0 && ty < H) {
+          const si = (ty * W + tx) * 4;
+          out[di] = td[si]; out[di+1] = td[si+1]; out[di+2] = td[si+2]; out[di+3] = 255;
+        } else {
+          out[di] = 0; out[di+1] = 0; out[di+2] = 0; out[di+3] = 255;
+        }
+      }
+    }
+    return { data: out, width: W, height: H, shift: bestShift, corr: bestCorr };
+  }
+
+  function channelCorrelation(a, b, channel) {
+    const n = Math.min(a.length, b.length) / 4;
+    let sa = 0, sb = 0, sab = 0, sa2 = 0, sb2 = 0;
+    for (let i = 0; i < n; i++) {
+      const va = a[i*4 + channel];
+      const vb = b[i*4 + channel];
+      sa += va; sb += vb; sab += va*vb; sa2 += va*va; sb2 += vb*vb;
+    }
+    const num = n*sab - sa*sb;
+    const den = Math.sqrt((n*sa2 - sa*sa) * (n*sb2 - sb*sb)) + 1e-9;
+    return num / den;
+  }
+
   // ---------- Завершение ----------
   async function processShots() {
     const heightMap = buildHeightMap(shots);
@@ -678,15 +737,19 @@ function computeEntropyBox() {
         goHome();
         return;
       }
+      const refFragment = captureReferenceFragment256();
       const zc = lastEntropyBox && lastEntropyBox._base
         ? { fx: lastEntropyBox._base.fx, fy: lastEntropyBox._base.fy,
-            fw: lastEntropyBox.fw, fh: lastEntropyBox.fh }
+            fw: lastEntropyBox._base.fw, fh: lastEntropyBox._base.fh }
         : null;
       const record = {
         name,
         createdAt: Date.now(),
         globalFeatures: Array.from(globalFeatures || []),
         zoneCoords: zc,
+        referenceFragment: Array.from(refFragment.data),
+        refWidth: refFragment.width,
+        refHeight: refFragment.height,
         heightMap: Array.from(heightMap),
         stdZ
       };
@@ -701,17 +764,41 @@ function computeEntropyBox() {
       return;
     }
 
-    // mode === 'verify'
+    // verify
     if (!verifyBase) {
       await showModal('Ошибка', 'Нет эталона для сравнения.');
       await setTorch(false);
       goHome();
       return;
     }
-    const sim = cosine(heightMap, verifyBase.heightMap);
-    const verdict = sim > 0.6 ? 'Оригинал' : 'Копия';
-    await showModal(verdict,
-      `Сходство карты высот: ${(sim*100).toFixed(1)}%. std(Z) текущий: ${stdZ.toFixed(2)}, эталон: ${verifyBase.stdZ.toFixed(2)}.`);
+        const simZ = cosine(heightMap, verifyBase.heightMap);
+    if (simZ < 0.6) {
+      await showModal('Копия', `Карта высот не совпадает (${(simZ*100).toFixed(1)}%).`);
+      await setTorch(false);
+      goHome();
+      return;
+    }
+
+    // этап 2 — сравнение эталонного фрагмента 256×256
+    const testFrag = captureReferenceFragment256();
+    const refFrag = {
+      data: new Uint8ClampedArray(verifyBase.referenceFragment),
+      width: verifyBase.refWidth,
+      height: verifyBase.refHeight
+    };
+    const aligned = alignFragmentAffine(testFrag, refFrag);
+    const corrR = channelCorrelation(aligned.data, refFrag.data, 0);
+    const corrG = channelCorrelation(aligned.data, refFrag.data, 1);
+    const corrB = channelCorrelation(aligned.data, refFrag.data, 2);
+    const corrAvg = (corrR + corrG + corrB) / 3;
+
+    if (corrAvg > 0.85) {
+      await showModal('Оригинал',
+        `Карта высот: ${(simZ*100).toFixed(1)}%. Корреляция фрагмента: R=${corrR.toFixed(2)}, G=${corrG.toFixed(2)}, B=${corrB.toFixed(2)}.`);
+    } else {
+      await showModal('Копия',
+        `Фрагмент не совпадает. Карта высот: ${(simZ*100).toFixed(1)}%. Корреляция: R=${corrR.toFixed(2)}, G=${corrG.toFixed(2)}, B=${corrB.toFixed(2)}.`);
+    }
     await setTorch(false);
     goHome();
   }
@@ -739,8 +826,7 @@ function computeEntropyBox() {
   btnVerify.onclick  = startVerify;
   btnShot.onclick    = onShot;
   btnCancel.onclick  = () => { setTorch(false).finally(() => goHome()); };
-
-  btnTorch.onclick = async () => {
+  btnTorch.onclick   = async () => {
     const ok = await setTorch(!torchOn);
     if (!ok) {
       setHint('Фонарик через браузер недоступен. Включите вручную: Пункт управления → Фонарик.');
@@ -750,7 +836,6 @@ function computeEntropyBox() {
   window.addEventListener('resize', () => { renderBoxes(); });
   window.addEventListener('orientationchange', () => { setTimeout(renderBoxes, 300); });
 
-  // Проверим поддержку IndexedDB (на всякий случай)
   if (!('indexedDB' in window)) {
     console.warn('IndexedDB не поддерживается — база работать не будет');
   }
@@ -758,5 +843,4 @@ function computeEntropyBox() {
 </script>
 </body>
 </html>
-
-
+ 
