@@ -304,7 +304,7 @@ function locateFragmentInFrame(refFrag, refW, refH, predCx, predCy, searchRadius
 
   // ---------- Детекция картины ----------
   function detectPainting() {
-  
+   setStatus('Контуров: ' + contours.size());
   if (!window.cvReady || !window.cv) {
     setStatus('OpenCV не загружен (cvReady=' + window.cvReady + ')');
     return null;
@@ -391,7 +391,7 @@ function locateFragmentInFrame(refFrag, refW, refH, predCx, predCy, searchRadius
     src && src.delete(); gray && gray.delete(); edges && edges.delete();
     contours && contours.delete(); hierarchy && hierarchy.delete();
   }
-   setStatus('Контуров: ' + contours.size());
+  
 }
   // ---------- Геометрия ----------
   function computeGeometry() {
