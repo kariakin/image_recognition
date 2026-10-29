@@ -304,7 +304,10 @@ function locateFragmentInFrame(refFrag, refW, refH, predCx, predCy, searchRadius
 
   // ---------- Детекция картины ----------
   function detectPainting() {
-  if (!window.cvReady || !window.cv) return null;
+  if (!window.cvReady || !window.cv) {
+    setStatus('OpenCV не загружен (cvReady=' + window.cvReady + ')');
+    return null;
+  }
   const cv = window.cv;
   const W = 320, H = Math.round(320 * video.videoHeight / video.videoWidth);
   const c = document.createElement('canvas');
