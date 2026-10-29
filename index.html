@@ -169,6 +169,69 @@
   }
 
   // ---------- Утилиты ----------
+
+// Ищем положение эталонного фрагмента (refFrag 256x256, Uint8ClampedArray) в кадре
+// в окрестности предсказанного центра (predCx, predCy в пикселях кадра).
+// Возвращает {cx, cy, score} — новое положение центра в пикселях кадра.
+function locateFragmentInFrame(refFrag, refW, refH, predCx, predCy, searchRadius) {
+  const c = document.createElement('canvas');
+  c.width = video.videoWidth; c.height = video.videoHeight;
+  c.getContext('2d').drawImage(video, 0, 0, c.width, c.height);
+  const frameData = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+  const FW = c.width, FH = c.height;
+
+  // уменьшаем эталон до 64x64 для скорости
+  const RW = 64, RH = 64;
+  const refSmall = new Float32Array(RW * RH);
+  for (let y = 0; y < RH; y++) {
+    for (let x = 0; x < RW; x++) {
+      const sx = Math.floor(x * refW / RW), sy = Math.floor(y * refH / RH);
+      const i = (sy * refW + sx) * 4;
+      refSmall[y*RW + x] = 0.299*refFrag[i] + 0.587*refFrag[i+1] + 0.114*refFrag[i+2];
+    }
+  }
+  // среднее и std эталона
+  let rm = 0; for (let i = 0; i < refSmall.length; i++) rm += refSmall[i];
+  rm /= refSmall.length;
+  let rv = 0; for (let i = 0; i < refSmall.length; i++) rv += (refSmall[i]-rm)**2;
+  const rstd = Math.sqrt(rv / refSmall.length) + 1e-6;
+
+  let bestScore = -1, bestCx = predCx, bestCy = predCy;
+  const step = 4; // шаг поиска в пикселях кадра
+  const scale = (refW / RW); // во сколько раз кадр «больше» эталона по ширине
+  // ищем центр в окне ±searchRadius
+  for (let dy = -searchRadius; dy <= searchRadius; dy += step) {
+    for (let dx = -searchRadius; dx <= searchRadius; dx += step) {
+      const cx = predCx + dx, cy = predCy + dy;
+      const left = cx - refW/2, top = cy - refH/2;
+      if (left < 0 || top < 0 || left + refW > FW || top + refH > FH) continue;
+
+      // выборка 64x64 из кадра
+      let sum = 0, sumSq = 0, sumFR = 0;
+      const patch = new Float32Array(RW * RH);
+      for (let y = 0; y < RH; y++) {
+        for (let x = 0; x < RW; x++) {
+          const fx = Math.floor(left + x * refW / RW);
+          const fy = Math.floor(top + y * refH / RH);
+          const i = (fy * FW + fx) * 4;
+          const v = 0.299*frameData[i] + 0.587*frameData[i+1] + 0.114*frameData[i+2];
+          patch[y*RW + x] = v;
+          sum += v; sumSq += v*v;
+        }
+      }
+      const pm = sum / patch.length;
+      const pstd = Math.sqrt(Math.max(0, sumSq/patch.length - pm*pm)) + 1e-6;
+
+      // корреляция Пирсона
+      let cov = 0;
+      for (let i = 0; i < patch.length; i++) cov += (patch[i]-pm)*(refSmall[i]-rm);
+      const score = cov / (patch.length * pstd * rstd);
+      if (score > bestScore) { bestScore = score; bestCx = cx; bestCy = cy; }
+    }
+  }
+  return { cx: bestCx, cy: bestCy, score: bestScore };
+}
+ 
   function showModal(title, text, opts = {}) {
     modalTitle.textContent = title;
     modalText.textContent = text || '';
@@ -321,37 +384,102 @@
              fw: pw * ob.fw, fh: ph * ob.fh };
   }
   // обновить lastEntropyBox.fx..fh (в долях кадра) из _base (в долях картины)
-  function refreshEntropyBoxFromBase() {
-    if (!lastEntropyBox || !lastEntropyBox._base) return;
-    const cur = paintingToFrame(lastEntropyBox._base.fx, lastEntropyBox._base.fy,
-                                lastEntropyBox._base.fw, lastEntropyBox._base.fh);
-    lastEntropyBox.fx = cur.fx; lastEntropyBox.fy = cur.fy;
-    lastEntropyBox.fw = cur.fw; lastEntropyBox.fh = cur.fh;
+ let lastRefFragment = null; // для режима «Защита» — предыдущий кадр как эталон
+let lastRefW = 0, lastRefH = 0;
+
+function refreshEntropyBoxFromBase() {
+  if (!lastEntropyBox || !lastEntropyBox._base) return;
+
+  // 1. грубое предсказание по objectBoxFrac
+  const pred = paintingToFrame(
+    lastEntropyBox._base.fx, lastEntropyBox._base.fy,
+    lastEntropyBox._base.fw, lastEntropyBox._base.fh
+  );
+  let predCx = (pred.fx + pred.fw / 2) * video.videoWidth;
+  let predCy = (pred.fy + pred.fh / 2) * video.videoHeight;
+  let predW = pred.fw * video.videoWidth;
+  let predH = pred.fh * video.videoHeight;
+
+  // 2. точная привязка по эталону
+  let refFrag = null, refW = 0, refH = 0;
+  if (mode === 'verify' && verifyBase && verifyBase.referenceFragment) {
+    refFrag = new Uint8ClampedArray(verifyBase.referenceFragment);
+    refW = verifyBase.refWidth; refH = verifyBase.refHeight;
+  } else if (lastRefFragment) {
+    refFrag = lastRefFragment; refW = lastRefW; refH = lastRefH;
   }
+
+  if (refFrag) {
+    // масштабируем эталон под предсказанный размер (он меняется при зуме)
+    const scaled = document.createElement('canvas');
+    scaled.width = Math.max(16, Math.round(predW));
+    scaled.height = Math.max(16, Math.round(predH));
+    const sctx = scaled.getContext('2d', { willReadFrequently: true });
+    const src = document.createElement('canvas');
+    src.width = refW; src.height = refH;
+    src.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(refFrag), refW, refH), 0, 0);
+    sctx.drawImage(src, 0, 0, scaled.width, scaled.height);
+    const scaledData = sctx.getImageData(0, 0, scaled.width, scaled.height);
+
+    const found = locateFragmentInFrame(
+      scaledData.data, scaled.width, scaled.height,
+      predCx, predCy,
+      Math.round(Math.max(predW, predH) * 0.35) // окно поиска — 35% размера фрагмента
+    );
+    if (found.score > 0.5) {
+      predCx = found.cx; predCy = found.cy;
+      // уточняем размер (если зум изменился, размер мог остаться прежним — не критично)
+    }
+  }
+
+  // 3. записываем итоговые координаты в lastEntropyBox (в долях кадра)
+  const vw = video.videoWidth, vh = video.videoHeight;
+  lastEntropyBox.fx = (predCx - predW/2) / vw;
+  lastEntropyBox.fy = (predCy - predH/2) / vh;
+  lastEntropyBox.fw = predW / vw;
+  lastEntropyBox.fh = predH / vh;
+
+  // 4. обновляем эталон для следующего тика (только в protect)
+  if (mode === 'protect') {
+    try {
+      const c = document.createElement('canvas');
+      c.width = vw; c.height = vh;
+      c.getContext('2d').drawImage(video, 0, 0, c.width, c.height);
+      const sx = Math.max(0, Math.round(predCx - predW/2));
+      const sy = Math.max(0, Math.round(predCy - predH/2));
+      const sw = Math.min(Math.round(predW), vw - sx);
+      const sh = Math.min(Math.round(predH), vh - sy);
+      if (sw > 16 && sh > 16) {
+        const patch = document.createElement('canvas');
+        patch.width = sw; patch.height = sh;
+        patch.getContext('2d').drawImage(c, sx, sy, sw, sh, 0, 0, sw, sh);
+        const pd = patch.getContext('2d').getImageData(0, 0, sw, sh);
+        lastRefFragment = pd.data; lastRefW = sw; lastRefH = sh;
+      }
+    } catch (e) {}
+  }
+}
 
   // ---------- Отрисовка ----------
   function renderBoxes() {
-    const g = computeGeometry();
-    if (!g) return;
-    if (objectBoxFrac) {
-      objectBox.style.display = 'block';
-      objectBox.style.left   = (g.offX + objectBoxFrac.fx * g.drawW) + 'px';
-      objectBox.style.top    = (g.offY + objectBoxFrac.fy * g.drawH) + 'px';
-      objectBox.style.width  = (objectBoxFrac.fw * g.drawW) + 'px';
-      objectBox.style.height = (objectBoxFrac.fh * g.drawH) + 'px';
-    } else objectBox.style.display = 'none';
+  const g = computeGeometry();
+  if (!g) return;
+  if (objectBoxFrac) {
+    objectBox.style.display = 'block';
+    objectBox.style.left   = (g.offX + objectBoxFrac.fx * g.drawW) + 'px';
+    objectBox.style.top    = (g.offY + objectBoxFrac.fy * g.drawH) + 'px';
+    objectBox.style.width  = (objectBoxFrac.fw * g.drawW) + 'px';
+    objectBox.style.height = (objectBoxFrac.fh * g.drawH) + 'px';
+  } else objectBox.style.display = 'none';
 
-    // всегда пересчитываем энтропийную рамку из _base, чтобы она следовала за картиной
-    if (lastEntropyBox) refreshEntropyBoxFromBase();
-
-    if (lastEntropyBox) {
-      entropyBox.style.display = 'block';
-      entropyBox.style.left   = (g.offX + lastEntropyBox.fx * g.drawW) + 'px';
-      entropyBox.style.top    = (g.offY + lastEntropyBox.fy * g.drawH) + 'px';
-      entropyBox.style.width  = (lastEntropyBox.fw * g.drawW) + 'px';
-      entropyBox.style.height = (lastEntropyBox.fh * g.drawH) + 'px';
-    } else entropyBox.style.display = 'none';
-  }
+  if (lastEntropyBox) {
+    entropyBox.style.display = 'block';
+    entropyBox.style.left   = (g.offX + lastEntropyBox.fx * g.drawW) + 'px';
+    entropyBox.style.top    = (g.offY + lastEntropyBox.fy * g.drawH) + 'px';
+    entropyBox.style.width  = (lastEntropyBox.fw * g.drawW) + 'px';
+    entropyBox.style.height = (lastEntropyBox.fh * g.drawH) + 'px';
+  } else entropyBox.style.display = 'none';
+}
   function startRenderLoop() {
     if (rafRunning) return;
     rafRunning = true;
@@ -395,6 +523,10 @@
       return;
     }
 
+    
+    if (state === 'entropy' || state === 'shoot_ready') {
+      refreshEntropyBoxFromBase();
+    }
     if (state === 'entropy') computeEntropyBox();
     // shoot_ready / shoot: рамка стоит в _base, ничего не пересчитываем
   }
@@ -470,11 +602,20 @@
     const inPainting = frameToPainting(bb.fx, bb.fy, bb.fw, bb.fh);
 
     if (!lastEntropyBox) {
-      lastEntropyBox = {
-        fx: bb.fx, fy: bb.fy, fw: bb.fw, fh: bb.fh,
-        entropy: best,
-        _base: inPainting
-      };
+     verifyBase = best;
+     const zc = best.zoneCoords;
+     lastEntropyBox = {
+     fx: 0, fy: 0, fw: 0, fh: 0,
+     entropy: 0,
+     _base: { fx: zc.fx, fy: zc.fy, fw: zc.fw, fh: zc.fh }
+     };
+// сразу позиционируем по эталону из базы
+    refreshEntropyBoxFromBase();
+// если не нашли по фичам — оставляем предсказание по objectBoxFrac
+    state = 'shoot_ready';
+    btnShot.disabled = false;
+    setHint(`Найдено: «${best.name}». Приблизьтесь к зелёной зоне и нажмите «Фото».`);
+    setStatus(`Сходство: ${(bestSim*100).toFixed(1)}%`);
     } else {
       const a = 0.3;
       lastEntropyBox._base.fx = lastEntropyBox._base.fx * (1 - a) + inPainting.fx * a;
