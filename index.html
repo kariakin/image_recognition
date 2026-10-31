@@ -11,7 +11,6 @@
                font-family: -apple-system, BlinkMacSystemFont, sans-serif; overflow: hidden; }
   #app { position: relative; width: 100vw; height: 100vh; height: 100dvh;
          display: flex; flex-direction: column; }
-
   #home { position: absolute; inset: 0; display: flex; flex-direction: column;
           align-items: center; justify-content: center; gap: 24px; z-index: 20;
           background: #000; padding: 24px; }
@@ -20,12 +19,10 @@
                border-radius: 14px; border: none; font-weight: 700; }
   #btnProtect { background: #0a84ff; color: #fff; }
   #btnVerify  { background: #30d158; color: #000; }
-
   #camera { position: absolute; inset: 0; display: none; flex-direction: column; z-index: 5; }
   #videoWrap { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; background: #111; }
   video { position: relative; z-index: 1; width: 100%; height: 100%; object-fit: cover; display: block; }
   #overlay { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
-
   .box { position: absolute; display: none; box-sizing: border-box; pointer-events: none; }
   #objectBox { border: 3px dashed #ffd60a; }
   #entropyBox { border: 3px solid #00ff66; }
@@ -35,12 +32,10 @@
                     background: #00ff66; transform: translate(-50%,-50%); }
   #entropyBox.target { border-color: #ffd60a; }
   #entropyBox.target .ch, #entropyBox.target .cv { background: #ffd60a; }
-
   #hint { position: absolute; top: 12px; left: 12px; right: 12px; padding: 8px 12px;
           background: rgba(0,0,0,0.6); border-radius: 8px; font-size: 13px; line-height: 1.35; z-index: 3; }
   #status { position: absolute; bottom: 4px; left: 8px; right: 8px; font-size: 11px;
             color: #aaa; text-align: center; z-index: 3; pointer-events: none; }
-
   #controls { flex: 0 0 auto; padding: 12px; padding-bottom: calc(12px + env(safe-area-inset-bottom));
               background: #000; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; z-index: 3; }
   button { padding: 14px; border-radius: 10px; border: none; font-size: 15px; font-weight: 600;
@@ -48,7 +43,6 @@
   button.primary { background: #0a84ff; }
   button.danger  { background: #ff453a; }
   button:disabled { opacity: 0.4; }
-
   #modal { position: absolute; inset: 0; background: rgba(0,0,0,0.85); display: none;
            flex-direction: column; align-items: center; justify-content: center; z-index: 30; padding: 24px; }
   #modal .card { background: #1c1c1e; padding: 20px; border-radius: 14px; width: 100%; max-width: 360px; }
@@ -61,15 +55,11 @@
 </head>
 <body>
 <div id="app">
-
-  <!-- Главный экран -->
   <div id="home">
     <h1>Art Inspector</h1>
     <button id="btnProtect" class="big">Защита</button>
     <button id="btnVerify"  class="big">Проверка</button>
   </div>
-
-  <!-- Экран камеры -->
   <div id="camera">
     <div id="videoWrap">
       <video id="video" playsinline autoplay muted></video>
@@ -86,8 +76,6 @@
       <button id="btnCancel" class="danger">Отмена</button>
     </div>
   </div>
-
-  <!-- Модалка -->
   <div id="modal">
     <div class="card">
       <h2 id="modalTitle"></h2>
@@ -99,6 +87,11 @@
 </div>
 <script>
 (() => {
+  // ---------- Отладочный лог ----------
+  const DEBUG = true;
+  const log = (...a) => { if (DEBUG) console.log('[AI]', ...a); };
+  const warn = (...a) => console.warn('[AI]', ...a);
+
   // ---------- DOM ----------
   const home = document.getElementById('home');
   const cameraEl = document.getElementById('camera');
@@ -124,12 +117,10 @@
   let mode = null;            // 'protect' | 'verify'
   let state = 'idle';         // 'detect' | 'entropy' | 'shoot_ready' | 'shoot' | 'done'
   let analysisTimer = null, rafRunning = false;
-
   let objectBoxFrac = null;   // {fx,fy,fw,fh,areaFrac} в долях кадра
-  let lastEntropyBox = null;  // {fx,fy,fw,fh,entropy,_base:{fx,fy,fw,fh}} — fx..fh в долях кадра, _base в долях картины
+  let lastEntropyBox = null;  // {fx,fy,fw,fh,entropy,_base:{fx,fy,fw,fh}}
   let globalFeatures = null;
   let verifyBase = null;
-
   let shots = [];
   let targetIndex = 0;
 
@@ -169,69 +160,6 @@
   }
 
   // ---------- Утилиты ----------
-
-// Ищем положение эталонного фрагмента (refFrag 256x256, Uint8ClampedArray) в кадре
-// в окрестности предсказанного центра (predCx, predCy в пикселях кадра).
-// Возвращает {cx, cy, score} — новое положение центра в пикселях кадра.
-function locateFragmentInFrame(refFrag, refW, refH, predCx, predCy, searchRadius) {
-  const c = document.createElement('canvas');
-  c.width = video.videoWidth; c.height = video.videoHeight;
-  c.getContext('2d').drawImage(video, 0, 0, c.width, c.height);
-  const frameData = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
-  const FW = c.width, FH = c.height;
-
-  // уменьшаем эталон до 64x64 для скорости
-  const RW = 64, RH = 64;
-  const refSmall = new Float32Array(RW * RH);
-  for (let y = 0; y < RH; y++) {
-    for (let x = 0; x < RW; x++) {
-      const sx = Math.floor(x * refW / RW), sy = Math.floor(y * refH / RH);
-      const i = (sy * refW + sx) * 4;
-      refSmall[y*RW + x] = 0.299*refFrag[i] + 0.587*refFrag[i+1] + 0.114*refFrag[i+2];
-    }
-  }
-  // среднее и std эталона
-  let rm = 0; for (let i = 0; i < refSmall.length; i++) rm += refSmall[i];
-  rm /= refSmall.length;
-  let rv = 0; for (let i = 0; i < refSmall.length; i++) rv += (refSmall[i]-rm)**2;
-  const rstd = Math.sqrt(rv / refSmall.length) + 1e-6;
-
-  let bestScore = -1, bestCx = predCx, bestCy = predCy;
-  const step = 4; // шаг поиска в пикселях кадра
-  const scale = (refW / RW); // во сколько раз кадр «больше» эталона по ширине
-  // ищем центр в окне ±searchRadius
-  for (let dy = -searchRadius; dy <= searchRadius; dy += step) {
-    for (let dx = -searchRadius; dx <= searchRadius; dx += step) {
-      const cx = predCx + dx, cy = predCy + dy;
-      const left = cx - refW/2, top = cy - refH/2;
-      if (left < 0 || top < 0 || left + refW > FW || top + refH > FH) continue;
-
-      // выборка 64x64 из кадра
-      let sum = 0, sumSq = 0, sumFR = 0;
-      const patch = new Float32Array(RW * RH);
-      for (let y = 0; y < RH; y++) {
-        for (let x = 0; x < RW; x++) {
-          const fx = Math.floor(left + x * refW / RW);
-          const fy = Math.floor(top + y * refH / RH);
-          const i = (fy * FW + fx) * 4;
-          const v = 0.299*frameData[i] + 0.587*frameData[i+1] + 0.114*frameData[i+2];
-          patch[y*RW + x] = v;
-          sum += v; sumSq += v*v;
-        }
-      }
-      const pm = sum / patch.length;
-      const pstd = Math.sqrt(Math.max(0, sumSq/patch.length - pm*pm)) + 1e-6;
-
-      // корреляция Пирсона
-      let cov = 0;
-      for (let i = 0; i < patch.length; i++) cov += (patch[i]-pm)*(refSmall[i]-rm);
-      const score = cov / (patch.length * pstd * rstd);
-      if (score > bestScore) { bestScore = score; bestCx = cx; bestCy = cy; }
-    }
-  }
-  return { cx: bestCx, cy: bestCy, score: bestScore };
-}
- 
   function showModal(title, text, opts = {}) {
     modalTitle.textContent = title;
     modalText.textContent = text || '';
@@ -249,12 +177,28 @@ function locateFragmentInFrame(refFrag, refW, refH, predCx, predCy, searchRadius
   function setHint(t) { hint.textContent = t; }
   function setStatus(t) { status.textContent = t; }
 
+  // Исправлено: защита от NaN при нулевых векторах
   function cosine(a, b) {
     if (!a || !b) return 0;
     const n = Math.min(a.length, b.length);
+    if (n === 0) return 0;
     let dot = 0, na = 0, nb = 0;
     for (let i = 0; i < n; i++) { dot += a[i]*b[i]; na += a[i]*a[i]; nb += b[i]*b[i]; }
-    return dot / (Math.sqrt(na) * Math.sqrt(nb) + 1e-9);
+    const denom = Math.sqrt(na) * Math.sqrt(nb);
+    if (denom < 1e-9) return 0;
+    return dot / denom;
+  }
+
+  // L2-нормализация вектора признаков
+  function normalizeL2(vec) {
+    if (!vec) return vec;
+    let s = 0;
+    for (let i = 0; i < vec.length; i++) s += vec[i]*vec[i];
+    const n = Math.sqrt(s);
+    if (n < 1e-9) return vec;
+    const out = new Float32Array(vec.length);
+    for (let i = 0; i < vec.length; i++) out[i] = vec[i] / n;
+    return out;
   }
 
   function goHome() {
@@ -271,21 +215,29 @@ function locateFragmentInFrame(refFrag, refW, refH, predCx, predCy, searchRadius
     btnTorch.textContent = 'Фонарик'; torchOn = false;
     btnShot.disabled = false;
     setHint(''); setStatus('');
+    log('goHome: состояние сброшено');
   }
 
   // ---------- Камера ----------
   async function startCamera() {
     if (stream) return;
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
-      audio: false
-    });
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+        audio: false
+      });
+    } catch (e) {
+      warn('getUserMedia error:', e);
+      await showModal('Ошибка камеры', 'Не удалось получить доступ к камере: ' + e.message);
+      throw e;
+    }
     video.srcObject = stream;
     videoTrack = stream.getVideoTracks()[0];
     await new Promise((resolve) => {
       const check = () => (video.videoWidth > 0 ? resolve() : setTimeout(check, 100));
       check();
     });
+    log('Камера запущена:', video.videoWidth, 'x', video.videoHeight);
   }
   function stopCamera() {
     if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; videoTrack = null; }
@@ -294,114 +246,102 @@ function locateFragmentInFrame(refFrag, refW, refH, predCx, predCy, searchRadius
     if (!videoTrack) return false;
     try {
       const caps = videoTrack.getCapabilities?.() || {};
-      if (!caps.torch) return false;
+      if (!caps.torch) {
+        log('Фонарик не поддерживается устройством');
+        return false;
+      }
       await videoTrack.applyConstraints({ advanced: [{ torch: on }] });
       torchOn = on;
       btnTorch.textContent = on ? 'Фонарик ВКЛ' : 'Фонарик';
       return true;
-    } catch (e) { return false; }
+    } catch (e) {
+      warn('setTorch error:', e);
+      return false;
+    }
   }
 
   // ---------- Детекция картины ----------
   function detectPainting() {
-   setStatus('Контуров: ' + contours.size());
-  if (!window.cvReady || !window.cv) {
-    setStatus('OpenCV не загружен (cvReady=' + window.cvReady + ')');
-    return null;
-  }
-  const cv = window.cv;
-  const W = 320, H = Math.round(320 * video.videoHeight / video.videoWidth);
-  const c = document.createElement('canvas');
-  c.width = W; c.height = H;
-  c.getContext('2d').drawImage(video, 0, 0, W, H);
-  let src, gray, edges, contours, hierarchy;
-  try {
-    src = cv.imread(c);
-    gray = new cv.Mat();
-    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-    edges = new cv.Mat();
-    cv.Canny(gray, edges, 50, 150);
-    const kernel = cv.Mat.ones(3, 3, cv.CV_8U);
-    cv.dilate(edges, edges, kernel); kernel.delete();
-    contours = new cv.MatVector();
-    hierarchy = new cv.Mat();
-    cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-
-    let best = null, bestArea = 0;
-    const imgArea = W * H;
-    const edgeMargin = 4; // пикселей от края — контур не должен к ним прилипать
-
-    for (let i = 0; i < contours.size(); i++) {
-      const cnt = contours.get(i);
-      const area = cv.contourArea(cnt);
-      if (area < imgArea * 0.10) { cnt.delete(); continue; }
-
-      const peri = cv.arcLength(cnt, true);
-      const approx = new cv.Mat();
-      cv.approxPolyDP(cnt, approx, 0.02 * peri, true);
-
-      if (approx.rows === 4 && area > bestArea) {
-        // bounding box
+    if (!window.cvReady || !window.cv) return null;
+    if (!video.videoWidth || !video.videoHeight) return null;
+    const cv = window.cv;
+    const W = 320, H = Math.round(320 * video.videoHeight / video.videoWidth);
+    const c = document.createElement('canvas');
+    c.width = W; c.height = H;
+    c.getContext('2d').drawImage(video, 0, 0, W, H);
+    let src, gray, edges, contours, hierarchy;
+    try {
+      src = cv.imread(c);
+      gray = new cv.Mat();
+      cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+      edges = new cv.Mat();
+      cv.Canny(gray, edges, 50, 150);
+      const kernel = cv.Mat.ones(3, 3, cv.CV_8U);
+      cv.dilate(edges, edges, kernel); kernel.delete();
+      contours = new cv.MatVector();
+      hierarchy = new cv.Mat();
+      cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+      let best = null, bestArea = 0;
+      const imgArea = W * H;
+      for (let i = 0; i < contours.size(); i++) {
+        const cnt = contours.get(i);
+        const area = cv.contourArea(cnt);
+        if (area < imgArea * 0.05) { cnt.delete(); continue; }
+        const peri = cv.arcLength(cnt, true);
+        const approx = new cv.Mat();
+        cv.approxPolyDP(cnt, approx, 0.02 * peri, true);
+        // Исправлено: устранена утечка памяти — approx всегда удаляется
+        if (approx.rows === 4 && area > bestArea) {
+          bestArea = area;
+          if (best) best.delete();
+          best = approx; // переносим владение, без clone
+        } else {
+          approx.delete();
+        }
+        cnt.delete();
+      }
+      let result = null;
+      if (best) {
         const pts = [];
-        for (let k = 0; k < 4; k++) pts.push({ x: approx.data32S[k*2], y: approx.data32S[k*2+1] });
+        for (let i = 0; i < 4; i++) pts.push({ x: best.data32S[i*2], y: best.data32S[i*2+1] });
         const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
         const minX = Math.min(...xs), maxX = Math.max(...xs);
         const minY = Math.min(...ys), maxY = Math.max(...ys);
-        const bw = maxX - minX, bh = maxY - minY;
-        const areaFrac = (bw * bh) / imgArea;
-
-        // отбрасываем ложные срабатывания:
-        // 1) контур прижат к краям кадра (весь экран)
-        const touchesEdge =
-          minX < edgeMargin || minY < edgeMargin ||
-          maxX > W - edgeMargin || maxY > H - edgeMargin;
-        // 2) площадь > 95% кадра — это рамка экрана, а не картина
-        const tooBig = areaFrac > 0.95;
-        // 3) соотношение сторон слишком вытянутое
-        const aspect = bw / bh;
-        const badAspect = aspect < 0.4 || aspect > 2.5;
-
-        if (!touchesEdge && !tooBig && !badAspect) {
-          bestArea = area;
-          if (best) best.delete();
-          best = approx.clone();
-        }
+        result = { fx: minX/W, fy: minY/H, fw: (maxX-minX)/W, fh: (maxY-minY)/H,
+                   areaFrac: bestArea / imgArea };
+        best.delete();
       }
-      approx.delete();
-      cnt.delete();
+      return result;
+    } catch (e) {
+      warn('detectPainting error:', e);
+      return null;
+    } finally {
+      src && src.delete(); gray && gray.delete(); edges && edges.delete();
+      contours && contours.delete(); hierarchy && hierarchy.delete();
     }
-
-    let result = null;
-    if (best) {
-      const pts = [];
-      for (let k = 0; k < 4; k++) pts.push({ x: best.data32S[k*2], y: best.data32S[k*2+1] });
-      const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
-      const minX = Math.min(...xs), maxX = Math.max(...xs);
-      const minY = Math.min(...ys), maxY = Math.max(...ys);
-      result = {
-        fx: minX / W, fy: minY / H,
-        fw: (maxX - minX) / W, fh: (maxY - minY) / H,
-        areaFrac: bestArea / imgArea
-      };
-      best.delete();
-    }
-    return result;
-  } catch (e) { return null; }
-  finally {
-    src && src.delete(); gray && gray.delete(); edges && edges.delete();
-    contours && contours.delete(); hierarchy && hierarchy.delete();
   }
-  
-}
+
   // ---------- Геометрия ----------
+  // Исправлено: video имеет object-fit: cover, значит расчёт для cover, а не contain
   function computeGeometry() {
     const cw = videoWrap.clientWidth, ch = videoWrap.clientHeight;
     const vw = video.videoWidth, vh = video.videoHeight;
     if (!cw || !ch || !vw || !vh) return null;
     const va = vw/vh, ca = cw/ch;
     let drawW, drawH, offX, offY;
-    if (va > ca) { drawH = ch; drawW = ch*va; offX = (cw-drawW)/2; offY = 0; }
-    else { drawW = cw; drawH = cw/va; offX = 0; offY = (ch-drawH)/2; }
+    if (va > ca) {
+      // Видео шире контейнера: заполняем по ширине, обрезаем сверху/снизу
+      drawW = cw;
+      drawH = cw / va;
+      offX = 0;
+      offY = (ch - drawH) / 2;
+    } else {
+      // Видео уже контейнера: заполняем по высоте, обрезаем по бокам
+      drawH = ch;
+      drawW = ch * va;
+      offX = (cw - drawW) / 2;
+      offY = 0;
+    }
     return { cw, ch, drawW, drawH, offX, offY };
   }
 
@@ -420,238 +360,34 @@ function locateFragmentInFrame(refFrag, refW, refH, predCx, predCy, searchRadius
              fw: pw * ob.fw, fh: ph * ob.fh };
   }
   // обновить lastEntropyBox.fx..fh (в долях кадра) из _base (в долях картины)
- let lastRefFragment = null; // для режима «Защита» — предыдущий кадр как эталон
-let lastRefW = 0, lastRefH = 0;
-
-function refreshEntropyBoxFromBase() {
-  if (!lastEntropyBox || !lastEntropyBox._base) return;
-  if (!window.cvReady || !window.cv) return; // ждём OpenCV
-
-  const cv = window.cv;
-
-  // 1. Грубое предсказание по objectBoxFrac
-  const pred = paintingToFrame(
-    lastEntropyBox._base.fx, lastEntropyBox._base.fy,
-    lastEntropyBox._base.fw, lastEntropyBox._base.fh
-  );
-  const vw = video.videoWidth, vh = video.videoHeight;
-  let predX = pred.fx * vw;
-  let predY = pred.fy * vh;
-  let predW = pred.fw * vw;
-  let predH = pred.fh * vh;
-
-  // защита от вырожденных размеров
-  predW = Math.max(32, Math.min(predW, vw * 0.8));
-  predH = Math.max(32, Math.min(predH, vh * 0.8));
-
-  // 2. Выбираем эталон
-  let refData = null, refW = 0, refH = 0;
-  if (mode === 'verify' && verifyBase && verifyBase.referenceFragment) {
-    refData = new Uint8ClampedArray(verifyBase.referenceFragment);
-    refW = verifyBase.refWidth; refH = verifyBase.refHeight;
-  } else if (lastRefFragment) {
-    refData = lastRefFragment; refW = lastRefW; refH = lastRefH;
+  function refreshEntropyBoxFromBase() {
+    if (!lastEntropyBox || !lastEntropyBox._base) return;
+    const cur = paintingToFrame(lastEntropyBox._base.fx, lastEntropyBox._base.fy,
+                                lastEntropyBox._base.fw, lastEntropyBox._base.fh);
+    lastEntropyBox.fx = cur.fx; lastEntropyBox.fy = cur.fy;
+    lastEntropyBox.fw = cur.fw; lastEntropyBox.fh = cur.fh;
   }
-
-  if (!refData) {
-    // эталона ещё нет — просто ставим по предсказанию
-    writeEntropyBox(predX, predY, predW, predH, vw, vh);
-    return;
-  }
-
-  // 3. ORB-матчинг: эталон vs область поиска в кадре
-  try {
-    // 3a. готовим эталон (масштабируем под predW/predH)
-    const refCanvas = document.createElement('canvas');
-    refCanvas.width = refW; refCanvas.height = refH;
-    refCanvas.getContext('2d').putImageData(
-      new ImageData(new Uint8ClampedArray(refData), refW, refH), 0, 0
-    );
-    const refScaled = document.createElement('canvas');
-    refScaled.width = Math.max(16, Math.round(predW));
-    refScaled.height = Math.max(16, Math.round(predH));
-    const rsCtx = refScaled.getContext('2d', { willReadFrequently: true });
-    rsCtx.drawImage(refCanvas, 0, 0, refScaled.width, refScaled.height);
-
-    // 3b. вырезаем область поиска из кадра (в 1.6 раза больше предсказания)
-    const padX = Math.round(predW * 0.3);
-    const padY = Math.round(predH * 0.3);
-    const sx = Math.max(0, Math.round(predX - padX));
-    const sy = Math.max(0, Math.round(predY - padY));
-    const ex = Math.min(vw, Math.round(predX + predW + padX));
-    const ey = Math.min(vh, Math.round(predY + predH + padY));
-    const sw = ex - sx, sh = ey - sy;
-    if (sw < 16 || sh < 16) { writeEntropyBox(predX, predY, predW, predH, vw, vh); return; }
-
-    const searchCanvas = document.createElement('canvas');
-    searchCanvas.width = sw; searchCanvas.height = sh;
-    searchCanvas.getContext('2d').drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh);
-
-    // 3c. ORB detect & compute на эталоне и области поиска
-    const refMat = cv.imread(refScaled);
-    const searchMat = cv.imread(searchCanvas);
-    const refGray = new cv.Mat();
-    const searchGray = new cv.Mat();
-    cv.cvtColor(refMat, refGray, cv.COLOR_RGBA2GRAY);
-    cv.cvtColor(searchMat, searchGray, cv.COLOR_RGBA2GRAY);
-
-    const orb = new cv.ORB(1000); // ограничим число фич — на маленьком патче их и так немного
-    const kp1 = new cv.KeyPointVector();
-    const des1 = new cv.Mat();
-    const kp2 = new cv.KeyPointVector();
-    const des2 = new cv.Mat();
-    orb.detectAndCompute(refGray, new cv.Mat(), kp1, des1);
-    orb.detectAndCompute(searchGray, new cv.Mat(), kp2, des2);
-
-    if (des1.rows < 4 || des2.rows < 4) {
-      // слишком мало фич — откат к предсказанию
-      cleanupOrb(refMat, searchMat, refGray, searchGray, kp1, des1, kp2, des2, orb);
-      writeEntropyBox(predX, predY, predW, predH, vw, vh);
-      return;
-    }
-
-    // 3d. матчинг BFMatcher + ratio test
-    const bf = new cv.BFMatcher(cv.NORM_HAMMING, false);
-    const matches = new cv.DMatchVectorVector();
-    bf.knnMatch(des1, des2, matches, 2);
-
-    const goodSrc = [], goodDst = [];
-    for (let i = 0; i < matches.size(); i++) {
-      const m = matches.get(i);
-      if (m.size() < 2) continue;
-      const m0 = m.get(0), m1 = m.get(1);
-      if (m0.distance < 0.75 * m1.distance) {
-        goodSrc.push(kp1.get(m0.queryIdx).pt);
-        goodDst.push(kp2.get(m0.trainIdx).pt);
-      }
-    }
-
-    if (goodSrc.length < 8) {
-      cleanupOrb(refMat, searchMat, refGray, searchGray, kp1, des1, kp2, des2, orb);
-      matches.delete();
-      writeEntropyBox(predX, predY, predW, predH, vw, vh);
-      return;
-    }
-
-    // 3e. гомография: точки эталона -> точки области поиска
-    const srcMat = cv.matFromArray(goodSrc.length, 1, cv.CV_32FC2,
-      goodSrc.flatMap(p => [p.x, p.y]));
-    const dstMat = cv.matFromArray(goodDst.length, 1, cv.CV_32FC2,
-      goodDst.flatMap(p => [p.x, p.y]));
-    const mask = new cv.Mat();
-    const H = cv.findHomography(srcMat, dstMat, cv.RANSAC, 3, mask);
-
-    let inliers = 0;
-    for (let i = 0; i < mask.rows; i++) if (mask.data[i]) inliers++;
-
-    if (H.rows === 3 && inliers >= 6) {
-      // 3f. проецируем углы эталона в кадр
-      const corners = cv.matFromArray(4, 1, cv.CV_32FC2, [
-        0, 0,
-        refScaled.width, 0,
-        refScaled.width, refScaled.height,
-        0, refScaled.height
-      ]);
-      const projected = new cv.Mat();
-      cv.perspectiveTransform(corners, projected, H);
-
-      // координаты в системе области поиска -> в системе кадра
-      const pts = [];
-      for (let i = 0; i < 4; i++) {
-        pts.push({
-          x: projected.data32F[i*2] + sx,
-          y: projected.data32F[i*2+1] + sy
-        });
-      }
-      const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
-      const newX = Math.min(...xs), newY = Math.min(...ys);
-      const newW = Math.max(...xs) - newX, newH = Math.max(...ys) - newY;
-
-      // проверка адекватности (не улетели за пределы кадра, размер не абсурдный)
-      if (newW > 16 && newH > 16 && newW < vw * 0.9 && newH < vh * 0.9) {
-        writeEntropyBox(newX, newY, newW, newH, vw, vh);
-      } else {
-        writeEntropyBox(predX, predY, predW, predH, vw, vh);
-      }
-
-      corners.delete(); projected.delete();
-    } else {
-      writeEntropyBox(predX, predY, predW, predH, vw, vh);
-    }
-
-    // cleanup
-    srcMat.delete(); dstMat.delete(); mask.delete();
-    if (H) H.delete();
-    matches.delete();
-    cleanupOrb(refMat, searchMat, refGray, searchGray, kp1, des1, kp2, des2, orb);
-
-  } catch (e) {
-    // при любой ошибке OpenCV — откат к предсказанию
-    writeEntropyBox(predX, predY, predW, predH, vw, vh);
-  }
-
-  // 4. обновляем эталон для следующего тика (только в protect)
-  if (mode === 'protect') {
-    updateRefFragmentFromCurrent(predX, predY, predW, predH, vw, vh);
-  }
-}
-
-// записать итоговые координаты в lastEntropyBox (доли кадра)
-function writeEntropyBox(x, y, w, h, vw, vh) {
-  lastEntropyBox.fx = x / vw;
-  lastEntropyBox.fy = y / vh;
-  lastEntropyBox.fw = w / vw;
-  lastEntropyBox.fh = h / vh;
-}
-
-// очистка ORB-объектов
-function cleanupOrb(refMat, searchMat, refGray, searchGray, kp1, des1, kp2, des2, orb) {
-  try {
-    refMat.delete(); searchMat.delete();
-    refGray.delete(); searchGray.delete();
-    kp1.delete(); des1.delete();
-    kp2.delete(); des2.delete();
-    orb.delete();
-  } catch (e) {}
-}
-
-// обновить эталонный патч из текущего кадра (для protect)
-function updateRefFragmentFromCurrent(x, y, w, h, vw, vh) {
-  try {
-    const sx = Math.max(0, Math.round(x));
-    const sy = Math.max(0, Math.round(y));
-    const sw = Math.min(Math.round(w), vw - sx);
-    const sh = Math.min(Math.round(h), vh - sy);
-    if (sw < 16 || sh < 16) return;
-    const c = document.createElement('canvas');
-    c.width = sw; c.height = sh;
-    c.getContext('2d').drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh);
-    const d = c.getContext('2d').getImageData(0, 0, sw, sh);
-    lastRefFragment = d.data;
-    lastRefW = sw; lastRefH = sh;
-  } catch (e) {}
-}
 
   // ---------- Отрисовка ----------
   function renderBoxes() {
-  const g = computeGeometry();
-  if (!g) return;
-  if (objectBoxFrac) {
-    objectBox.style.display = 'block';
-    objectBox.style.left   = (g.offX + objectBoxFrac.fx * g.drawW) + 'px';
-    objectBox.style.top    = (g.offY + objectBoxFrac.fy * g.drawH) + 'px';
-    objectBox.style.width  = (objectBoxFrac.fw * g.drawW) + 'px';
-    objectBox.style.height = (objectBoxFrac.fh * g.drawH) + 'px';
-  } else objectBox.style.display = 'none';
-
-  if (lastEntropyBox) {
-    entropyBox.style.display = 'block';
-    entropyBox.style.left   = (g.offX + lastEntropyBox.fx * g.drawW) + 'px';
-    entropyBox.style.top    = (g.offY + lastEntropyBox.fy * g.drawH) + 'px';
-    entropyBox.style.width  = (lastEntropyBox.fw * g.drawW) + 'px';
-    entropyBox.style.height = (lastEntropyBox.fh * g.drawH) + 'px';
-  } else entropyBox.style.display = 'none';
-}
+    const g = computeGeometry();
+    if (!g) return;
+    if (objectBoxFrac) {
+      objectBox.style.display = 'block';
+      objectBox.style.left   = (g.offX + objectBoxFrac.fx * g.drawW) + 'px';
+      objectBox.style.top    = (g.offY + objectBoxFrac.fy * g.drawH) + 'px';
+      objectBox.style.width  = (objectBoxFrac.fw * g.drawW) + 'px';
+      objectBox.style.height = (objectBoxFrac.fh * g.drawH) + 'px';
+    } else objectBox.style.display = 'none';
+    if (lastEntropyBox) refreshEntropyBoxFromBase();
+    if (lastEntropyBox) {
+      entropyBox.style.display = 'block';
+      entropyBox.style.left   = (g.offX + lastEntropyBox.fx * g.drawW) + 'px';
+      entropyBox.style.top    = (g.offY + lastEntropyBox.fy * g.drawH) + 'px';
+      entropyBox.style.width  = (lastEntropyBox.fw * g.drawW) + 'px';
+      entropyBox.style.height = (lastEntropyBox.fh * g.drawH) + 'px';
+    } else entropyBox.style.display = 'none';
+  }
   function startRenderLoop() {
     if (rafRunning) return;
     rafRunning = true;
@@ -662,52 +398,36 @@ function updateRefFragmentFromCurrent(x, y, w, h, vw, vh) {
   // ---------- Анализ ----------
   let analysisCanvas = document.createElement('canvas');
   let analysisCtx = analysisCanvas.getContext('2d', { willReadFrequently: true });
-
   function startAnalysis() { stopAnalysis(); analysisTimer = setInterval(onAnalysisTick, 300); }
   function stopAnalysis() { if (analysisTimer) { clearInterval(analysisTimer); analysisTimer = null; } }
-
   let detectCounter = 0;
-
-let prevAreaFrac = 0;
-
-function onAnalysisTick() {
-  if (!video.videoWidth) return;
-
-  if (++detectCounter % 3 === 0) {
-    const det = detectPainting();
-    if (det) {
-      // стабилизация: если площадь резко изменилась — пропускаем тик
-      if (prevAreaFrac === 0 || Math.abs(det.areaFrac - prevAreaFrac) < 0.3) {
-        objectBoxFrac = det;
-        prevAreaFrac = det.areaFrac;
-      }
+  function onAnalysisTick() {
+    if (!video.videoWidth || video.readyState < 2) return;
+    if (++detectCounter % 3 === 0) {
+      const det = detectPainting();
+      if (det) objectBoxFrac = det;
     }
-  }
-
-  if (state === 'detect') {
-    if (objectBoxFrac) {
-      setHint(`Картина обнаружена (${Math.round(objectBoxFrac.areaFrac*100)}%). Приближайтесь.`);
-      if (objectBoxFrac.fw * objectBoxFrac.fh >= 0.55) {
-        globalFeatures = extractGlobalFeatures();
-        if (mode === 'verify') {
-          handleVerifyLookup();
-        } else {
-          state = 'entropy';
-          setHint('Ищем самую информативную зону…');
+    if (state === 'detect') {
+      if (objectBoxFrac) {
+        setHint(`Картина обнаружена (${Math.round(objectBoxFrac.areaFrac*100)}%). Приближайтесь.`);
+        if (objectBoxFrac.areaFrac >= 0.70) {
+          globalFeatures = extractGlobalFeatures();
+          if (mode === 'verify') {
+            handleVerifyLookup();
+          } else {
+            state = 'entropy';
+            setHint('Ищем самую информативную зону…');
+          }
         }
+      } else {
+        setHint('Наведите камеру на картину…');
       }
-    } else {
-      setHint('Наведите камеру на картину…');
+      return;
     }
-    return;
+    if (state === 'entropy') computeEntropyBox();
   }
 
-  if (state === 'entropy' || state === 'shoot_ready') {
-    refreshEntropyBoxFromBase();
-  }
-  if (state === 'entropy') computeEntropyBox();
-}
-
+  // Исправлено: добавлена L2-нормализация
   function extractGlobalFeatures() {
     const W = 256, H = Math.max(1, Math.round(256 * video.videoHeight / video.videoWidth));
     analysisCanvas.width = W; analysisCanvas.height = H;
@@ -725,7 +445,7 @@ function onAnalysisTick() {
         }
       out[by*fx+bx] = sum / n;
     }
-    return out;
+    return normalizeL2(out);
   }
 
   function computeEntropyBox() {
@@ -737,11 +457,8 @@ function onAnalysisTick() {
     let data;
     try { data = analysisCtx.getImageData(0, 0, W, H).data; }
     catch (e) { setStatus('getImageData error'); return; }
-
     const blockSize = 32;
     const cols = Math.floor(W/blockSize), rows = Math.floor(H/blockSize);
-
-    // окно поиска: если зона есть — вокруг её текущего положения в кадре, иначе весь кадр
     let restrict;
     if (!lastEntropyBox) {
       restrict = { x0: 0, y0: 0, x1: 1, y1: 1 };
@@ -756,7 +473,6 @@ function onAnalysisTick() {
         y1: Math.min(1, cur.fy + cur.fh * (1 + pad))
       };
     }
-
     let best = -1, bb = null;
     for (let by = 0; by < rows; by++) for (let bx = 0; bx < cols; bx++) {
       const fx = bx*blockSize/W, fy = by*blockSize/H;
@@ -775,24 +491,13 @@ function onAnalysisTick() {
       if (ent > best) { best = ent; bb = { fx, fy, fw, fh }; }
     }
     if (!bb) return;
-
     const inPainting = frameToPainting(bb.fx, bb.fy, bb.fw, bb.fh);
-
     if (!lastEntropyBox) {
-     verifyBase = best;
-     const zc = best.zoneCoords;
-     lastEntropyBox = {
-     fx: 0, fy: 0, fw: 0, fh: 0,
-     entropy: 0,
-     _base: { fx: zc.fx, fy: zc.fy, fw: zc.fw, fh: zc.fh }
-     };
-// сразу позиционируем по эталону из базы
-    
-// если не нашли по фичам — оставляем предсказание по objectBoxFrac
-    state = 'shoot_ready';
-    btnShot.disabled = false;
-    setHint(`Найдено: «${best.name}». Приблизьтесь к зелёной зоне и нажмите «Фото».`);
-    setStatus(`Сходство: ${(bestSim*100).toFixed(1)}%`);
+      lastEntropyBox = {
+        fx: bb.fx, fy: bb.fy, fw: bb.fw, fh: bb.fh,
+        entropy: best,
+        _base: inPainting
+      };
     } else {
       const a = 0.3;
       lastEntropyBox._base.fx = lastEntropyBox._base.fx * (1 - a) + inPainting.fx * a;
@@ -800,9 +505,8 @@ function onAnalysisTick() {
       lastEntropyBox._base.fw = inPainting.fw;
       lastEntropyBox._base.fh = inPainting.fh;
       lastEntropyBox.entropy = best;
-      
+      refreshEntropyBoxFromBase();
     }
-
     setStatus(`Энтропия: ${best.toFixed(2)} бит`);
     setHint('Приблизьтесь и нажмите «Фото». Рамка будет смещаться — двигайте камеру за ней.');
   }
@@ -812,8 +516,14 @@ function onAnalysisTick() {
     state = 'shoot_ready';
     btnShot.disabled = true;
     setHint('Ищем картину в базе…');
+    // Исправлено: проверка globalFeatures
+    if (!globalFeatures) {
+      await showModal('Ошибка', 'Не удалось извлечь признаки картины.');
+      goHome();
+      return;
+    }
     let list = [];
-    try { list = await dbAll(); } catch (e) { list = []; }
+    try { list = await dbAll(); } catch (e) { list = []; warn('dbAll error:', e); }
     if (!list.length) {
       await showModal('Не найдено', 'В локальной базе нет защищённых картин.');
       goHome();
@@ -822,6 +532,7 @@ function onAnalysisTick() {
     let best = null, bestSim = -1;
     for (const rec of list) {
       const sim = cosine(globalFeatures, rec.globalFeatures);
+      log('Сравнение с', rec.name, ':', sim.toFixed(3));
       if (sim > bestSim) { bestSim = sim; best = rec; }
     }
     if (!best) best = list[0];
@@ -846,13 +557,12 @@ function onAnalysisTick() {
 
   // ---------- Съёмка 5 кадров ----------
   const SHOT_OFFSETS = [
-    { dx: 0,  dy: 0,  label: 'Кадр 1/5: рамка в центре. Нажмите «Фото».' },
-    { dx: -0.5, dy: 0, label: 'Кадр 2/5: сдвиньте камеру ВЛЕВО, чтобы участок был под рамкой, и нажмите «Фото».' },
-    { dx: 0.5,  dy: 0, label: 'Кадр 3/5: сдвиньте камеру ВПРАВО и нажмите «Фото».' },
-    { dx: 0,  dy: -0.5, label: 'Кадр 4/5: сдвиньте камеру ВВЕРХ и нажмите «Фото».' },
-    { dx: 0,  dy: 0.5,  label: 'Кадр 5/5: сдвиньте камеру ВНИЗ и нажмите «Фото».' }
+    { dx: 0,    dy: 0,    label: 'Кадр 1/5: рамка в центре. Нажмите «Фото».' },
+    { dx: -0.3, dy: 0,    label: 'Кадр 2/5: сдвиньте камеру ВЛЕВО и нажмите «Фото».' },
+    { dx: 0.3,  dy: 0,    label: 'Кадр 3/5: сдвиньте камеру ВПРАВО и нажмите «Фото».' },
+    { dx: 0,    dy: -0.3, label: 'Кадр 4/5: сдвиньте камеру ВВЕРХ и нажмите «Фото».' },
+    { dx: 0,    dy: 0.3,  label: 'Кадр 5/5: сдвиньте камеру ВНИЗ и нажмите «Фото».' }
   ];
-
   function positionEntropyBoxForShot(index) {
     if (!lastEntropyBox || !lastEntropyBox._base) return;
     const off = SHOT_OFFSETS[index];
@@ -866,25 +576,12 @@ function onAnalysisTick() {
     const cur = paintingToFrame(shifted.fx, shifted.fy, shifted.fw, shifted.fh);
     lastEntropyBox.fx = cur.fx; lastEntropyBox.fy = cur.fy;
     lastEntropyBox.fw = cur.fw; lastEntropyBox.fh = cur.fh;
+    // _base остаётся исходным — это базовая позиция на картине
   }
 
   async function onShot() {
-    if (state === 'entropy') {
-      state = 'shoot';
-      targetIndex = 0;
-      shots = [];
-      stopAnalysis();
-      entropyBox.classList.add('target');
-      positionEntropyBoxForShot(0);
-      shots.push(capturePatchAtTarget());
-      targetIndex = 1;
-      positionEntropyBoxForShot(1);
-      setHint(SHOT_OFFSETS[1].label);
-      setStatus('Снимок 1 из 5');
-      return;
-    }
-    if (state === 'shoot_ready') {
-      // первый клик в проверке — старт серии
+    // Исправлено: объединена логика для entropy и shoot_ready
+    if (state === 'entropy' || state === 'shoot_ready') {
       state = 'shoot';
       targetIndex = 0;
       shots = [];
@@ -931,16 +628,17 @@ function onAnalysisTick() {
     return pctx.getImageData(0, 0, 96, 96);
   }
 
+  // Исправлено: корректное преобразование координат через paintingToFrame
   function captureReferenceFragment256() {
     const c = document.createElement('canvas');
     c.width = video.videoWidth; c.height = video.videoHeight;
     c.getContext('2d').drawImage(video, 0, 0, c.width, c.height);
-    const ob = objectBoxFrac;
     const base = lastEntropyBox._base;
-    const sx = (ob.fx + base.fx * ob.fw) * c.width;
-    const sy = (ob.fy + base.fy * ob.fh) * c.height;
-    const sw = base.fw * ob.fw * c.width;
-    const sh = base.fh * ob.fh * c.height;
+    const frameCoords = paintingToFrame(base.fx, base.fy, base.fw, base.fh);
+    const sx = frameCoords.fx * c.width;
+    const sy = frameCoords.fy * c.height;
+    const sw = frameCoords.fw * c.width;
+    const sh = frameCoords.fh * c.height;
     const out = document.createElement('canvas');
     out.width = 256; out.height = 256;
     const octx = out.getContext('2d', { willReadFrequently: true });
@@ -948,28 +646,80 @@ function onAnalysisTick() {
     return octx.getImageData(0, 0, 256, 256);
   }
 
+  // Исправлено: выравнивание снимков перед построением карты высот
+  function alignShotToRef(shot, ref) {
+    const W = ref.width, H = ref.height;
+    const sd = shot.data, rd = ref.data;
+    const maxShift = 12;
+    let bestShift = { dx: 0, dy: 0 }, bestCorr = -1;
+    for (let dy = -maxShift; dy <= maxShift; dy += 2) {
+      for (let dx = -maxShift; dx <= maxShift; dx += 2) {
+        let sumS = 0, sumR = 0, sumSR = 0, sumS2 = 0, sumR2 = 0, n = 0;
+        for (let y = Math.max(0, -dy); y < Math.min(H, H - dy); y += 2) {
+          for (let x = Math.max(0, -dx); x < Math.min(W, W - dx); x += 2) {
+            const si = ((y + dy) * W + (x + dx)) * 4;
+            const ri = (y * W + x) * 4;
+            const ls = 0.299*sd[si] + 0.587*sd[si+1] + 0.114*sd[si+2];
+            const lr = 0.299*rd[ri] + 0.587*rd[ri+1] + 0.114*rd[ri+2];
+            sumS += ls; sumR += lr; sumSR += ls*lr; sumS2 += ls*ls; sumR2 += lr*lr; n++;
+          }
+        }
+        if (n < 100) continue;
+        const num = n*sumSR - sumS*sumR;
+        const den = Math.sqrt((n*sumS2 - sumS*sumS) * (n*sumR2 - sumR*sumR)) + 1e-9;
+        const corr = num / den;
+        if (corr > bestCorr) { bestCorr = corr; bestShift = { dx, dy }; }
+      }
+    }
+    // Сдвигаем снимок
+    const out = new Uint8ClampedArray(W * H * 4);
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const tx = x + bestShift.dx, ty = y + bestShift.dy;
+        const di = (y * W + x) * 4;
+        if (tx >= 0 && tx < W && ty >= 0 && ty < H) {
+          const si = (ty * W + tx) * 4;
+          out[di] = sd[si]; out[di+1] = sd[si+1]; out[di+2] = sd[si+2]; out[di+3] = 255;
+        } else {
+          out[di] = 0; out[di+1] = 0; out[di+2] = 0; out[di+3] = 255;
+        }
+      }
+    }
+    return { data: out, width: W, height: H, shift: bestShift, corr: bestCorr };
+  }
+
   function buildHeightMap(shts) {
-    const W = 96, H = 96, out = new Float32Array(W*H);
+    const W = 96, H = 96;
     const valid = shts.filter(s => s);
-    if (valid.length < 2) return out;
+    if (valid.length < 2) return new Float32Array(W*H);
+    // Выравниваем все снимки к первому (центральному)
+    const ref = valid[0];
+    const aligned = [ref];
+    for (let i = 1; i < valid.length; i++) {
+      aligned.push(alignShotToRef(valid[i], ref));
+    }
+    log('Выравнивание снимков:', aligned.map(a => `(${a.shift.dx},${a.shift.dy})`));
+    const out = new Float32Array(W*H);
     for (let i = 0; i < W*H; i++) {
       let mean = 0;
-      for (const s of valid) {
+      for (const s of aligned) {
         const d = s.data;
         mean += 0.299*d[i*4] + 0.587*d[i*4+1] + 0.114*d[i*4+2];
       }
-      mean /= valid.length;
+      mean /= aligned.length;
       let v = 0;
-      for (const s of valid) {
+      for (const s of aligned) {
         const d = s.data;
         const l = 0.299*d[i*4] + 0.587*d[i*4+1] + 0.114*d[i*4+2];
         v += (l - mean) ** 2;
       }
-      out[i] = Math.sqrt(v / valid.length);
+      out[i] = Math.sqrt(v / aligned.length);
     }
     return out;
   }
+
   function computeStd(arr) {
+    if (!arr || arr.length === 0) return 0;
     let m = 0;
     for (let i = 0; i < arr.length; i++) m += arr[i];
     m /= arr.length;
@@ -1036,8 +786,8 @@ function onAnalysisTick() {
   async function processShots() {
     const heightMap = buildHeightMap(shots);
     const stdZ = computeStd(heightMap);
+    log('stdZ:', stdZ.toFixed(2));
     const THRESHOLD = 3.0;
-
     if (mode === 'protect') {
       if (stdZ < THRESHOLD) {
         await showModal('Защита невозможна',
@@ -1075,13 +825,13 @@ function onAnalysisTick() {
         await dbAdd(record);
         await showModal('Готово', 'Картина защищена и сохранена в локальной базе.');
       } catch (e) {
+        warn('dbAdd error:', e);
         await showModal('Ошибка', 'Не удалось сохранить: ' + e.message);
       }
       await setTorch(false);
       goHome();
       return;
     }
-
     // verify
     if (!verifyBase) {
       await showModal('Ошибка', 'Нет эталона для сравнения.');
@@ -1089,14 +839,21 @@ function onAnalysisTick() {
       goHome();
       return;
     }
-        const simZ = cosine(heightMap, verifyBase.heightMap);
+    // Исправлено: проверка наличия heightMap в эталоне
+    if (!verifyBase.heightMap || verifyBase.heightMap.length === 0) {
+      await showModal('Ошибка', 'В эталоне отсутствует карта высот.');
+      await setTorch(false);
+      goHome();
+      return;
+    }
+    const simZ = cosine(heightMap, verifyBase.heightMap);
+    log('simZ:', simZ.toFixed(3));
     if (simZ < 0.6) {
       await showModal('Копия', `Карта высот не совпадает (${(simZ*100).toFixed(1)}%).`);
       await setTorch(false);
       goHome();
       return;
     }
-
     // этап 2 — сравнение эталонного фрагмента 256×256
     const testFrag = captureReferenceFragment256();
     const refFrag = {
@@ -1105,11 +862,12 @@ function onAnalysisTick() {
       height: verifyBase.refHeight
     };
     const aligned = alignFragmentAffine(testFrag, refFrag);
+    log('alignFragment shift:', aligned.shift, 'corr:', aligned.corr.toFixed(3));
     const corrR = channelCorrelation(aligned.data, refFrag.data, 0);
     const corrG = channelCorrelation(aligned.data, refFrag.data, 1);
     const corrB = channelCorrelation(aligned.data, refFrag.data, 2);
     const corrAvg = (corrR + corrG + corrB) / 3;
-
+    log('corrAvg:', corrAvg.toFixed(3));
     if (corrAvg > 0.85) {
       await showModal('Оригинал',
         `Карта высот: ${(simZ*100).toFixed(1)}%. Корреляция фрагмента: R=${corrR.toFixed(2)}, G=${corrG.toFixed(2)}, B=${corrB.toFixed(2)}.`);
@@ -1129,13 +887,17 @@ function onAnalysisTick() {
     shots = []; targetIndex = 0;
     btnShot.disabled = false;
     entropyBox.classList.remove('target');
-    await startCamera();
-    await setTorch(true);
+    try {
+      await startCamera();
+      await setTorch(true);
+    } catch (e) {
+      goHome();
+      return;
+    }
     state = 'detect';
     startRenderLoop();
     startAnalysis();
   }
-
   async function startProtect() { mode = 'protect'; await enterCamera(); setHint('Режим «Защита». Ищем картину…'); }
   async function startVerify()  { mode = 'verify';  await enterCamera(); setHint('Режим «Проверка». Ищем картину…'); }
 
@@ -1147,18 +909,21 @@ function onAnalysisTick() {
   btnTorch.onclick   = async () => {
     const ok = await setTorch(!torchOn);
     if (!ok) {
-      setHint('Фонарик через браузер недоступен. Включите вручную: Пункт управления → Фонарик.');
+      setHint('Фонарик через браузер недоступен. Включите вручную.');
     }
   };
-
   window.addEventListener('resize', () => { renderBoxes(); });
   window.addEventListener('orientationchange', () => { setTimeout(renderBoxes, 300); });
-
+  // Пауза анализа при сворачивании вкладки
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) stopAnalysis();
+    else if (state !== 'idle' && state !== 'done') startAnalysis();
+  });
   if (!('indexedDB' in window)) {
-    console.warn('IndexedDB не поддерживается — база работать не будет');
+    warn('IndexedDB не поддерживается — база работать не будет');
   }
+  log('Art Inspector инициализирован');
 })();
 </script>
 </body>
 </html>
- 
