@@ -1034,9 +1034,9 @@ document.head.appendChild(script);
       progressInfo.textContent = 'Загрузка завершена';
 
         
-   // ================= ЗАГРУЗЧИК OPENCV =================
+     // ================= ЗАГРУЗЧИК OPENCV =================
   const CV_URL = 'https://docs.opencv.org/4.9.0/opencv.js';
-  const STALL_MS = 20000;        // нет байтов 20 с -> обрыв
+  const STALL_MS = 20000;
   const INIT_TIMEOUT_MS = 180000;
   const btnRetry = document.getElementById('btnRetry');
 
@@ -1047,9 +1047,13 @@ document.head.appendChild(script);
     return s < 60 ? s + ' с' : Math.floor(s / 60) + ' мин ' + (s % 60) + ' с';
   };
   function setBar(pct) {
-    if (pct == null) { progressBar.classList.add('indeterminate'); progressBar.style.width = ''; }
-    else { progressBar.classList.remove('indeterminate');
-           progressBar.style.width = Math.max(0, Math.min(100, pct)) + '%'; }
+    if (pct == null) { 
+      progressBar.classList.add('indeterminate'); 
+      progressBar.style.width = ''; 
+    } else { 
+      progressBar.classList.remove('indeterminate');
+      progressBar.style.width = Math.max(0, Math.min(100, pct)) + '%'; 
+    }
   }
 
   async function downloadWithProgress(url) {
@@ -1153,7 +1157,7 @@ document.head.appendChild(script);
       btnRetry.style.display = 'block';
     }
   })();
-  btnRetry.onclick = () => location.reload();     
+  btnRetry.onclick = () => location.reload();    
 
   if (!('indexedDB' in window)) {
 console.warn('IndexedDB не поддерживается');
