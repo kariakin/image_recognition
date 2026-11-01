@@ -1762,4 +1762,331 @@ function alignShotToRef(shot, ref) {
           for (let dx = -maxShift; dx <= maxShift; dx += 2) {
             let sumS = 0, sumR = 0, sumSR = 0, sumS2 = 0, sumR2 = 0, n = 0;
             for (let y = Math.max(0, -dy); y < Math.min(H, H - dy); y += 3) {
-       
+              for (let x = Math.max(0, -dx); x < Math.min(W, W - dx); x += 3) {
+                const si = ((y + dy) * W + (x + dx)) * 4;
+                const ri = (y * W + x) * 4;
+                const ls = 0.299 * sd[si] + 0.587 * sd[si + 1] + 0.114 * sd[si + 2];
+                const lr = 0.299 * rd[ri] + 0.587 * rd[ri + 1] + 0.114 * rd[ri + 2];
+                sumS += ls; sumR += lr; sumSR += ls * lr; sumS2 += ls * ls; sumR2 += lr * lr; n++;
+              }
+            }
+            if (n < 50) continue;
+            const num = n * sumSR - sumS * sumR;
+            const den = Math.sqrt((n * sumS2 - sumS * sumS) * (n * sumR2 - sumR * sumR)) + 1e-9;
+            const corr = num / den;
+            if (corr > bestCorr) { bestCorr = corr; bestShift = { dx, dy }; }
+          }
+        }
+        const out = new Uint8ClampedArray(W * H * 4);
+        const mask = new Uint8Array(W * H); // 1 = пиксель покрыт снимком (не чёрная граница)
+        for (let y = 0; y < H; y++) {
+          for (let x = 0; x < W; x++) {
+            const tx = x + bestShift.dx, ty = y + bestShift.dy;
+            const di = (y * W + x) * 4;
+            if (tx >= 0 && tx < W && ty >= 0 && ty < H) {
+              const si = (ty * W + tx) * 4;
+              out[di] = sd[si]; out[di + 1] = sd[si + 1]; out[di + 2] = sd[si + 2]; out[di + 3] = 255;
+              mask[y * W + x] = 1;
+            } else {
+              out[di] = 0; out[di + 1] = 0; out[di + 2] = 0; out[di + 3] = 255;
+            }
+          }
+        }
+        return { data: out, width: W, height: H, shift: bestShift, corr: bestCorr, mask };
+      }
+function buildHeightMap(shts) {
+        const W = 96, H = 96;
+        const out = new Float32Array(W * H);
+        const valid = shts.filter(s => s);
+        if (valid.length < 2) return { map: out, std: 0, validFrac: 0 };
+        const ref = valid[0];
+        const aligned = [ref];
+        const masks = [null];
+        for (let i = 1; i < valid.length; i++) {
+          const a = alignShotToRef(valid[i], ref);
+          aligned.push(a);
+          masks.push(a.mask);
+        }
+        // маска пикселей, покрытых всеми снимками
+        const okMask = new Uint8Array(W * H);
+        let vn = 0;
+        for (let i = 0; i < W * H; i++) {
+          let ok = 1;
+          for (let k = 1; k < masks.length; k++) if (masks[k] && !masks[k][i]) { ok = 0; break; }
+          okMask[i] = ok;
+          if (ok) vn++;
+        }
+        if (!vn) return { map: out, std: 0, validFrac: 0 };
+        // яркость каждого выровненного снимка
+        const lum = aligned.map(s => {
+          const l = new Float32Array(W * H);
+          const d = s.data;
+          for (let i = 0; i < W * H; i++) l[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2];
+          return l;
+        });
+        // убираем межкадровую разницу экспозиции (среднее по валидной области)
+        for (let k = 0; k < lum.length; k++) {
+          let m = 0;
+          for (let i = 0; i < W * H; i++) if (okMask[i]) m += lum[k][i];
+          m /= vn;
+          for (let i = 0; i < W * H; i++) lum[k][i] -= m;
+        }
+        // per-pixel std по снимкам = оценка рельефа (п.7)
+        let vsum = 0, vsum2 = 0;
+        for (let i = 0; i < W * H; i++) {
+          if (!okMask[i]) { out[i] = 0; continue; }
+          let mean = 0;
+          for (let k = 0; k < lum.length; k++) mean += lum[k][i];
+          mean /= lum.length;
+          let v = 0;
+          for (let k = 0; k < lum.length; k++) { const dd = lum[k][i] - mean; v += dd * dd; }
+          const sd = Math.sqrt(v / lum.length);
+          out[i] = sd;
+          vsum += sd; vsum2 += sd * sd;
+        }
+        const m = vsum / vn;
+        const std = Math.sqrt(Math.max(0, vsum2 / vn - m * m));
+        return { map: out, std, validFrac: vn / (W * H) };
+      }
+function alignFragmentAffine(test, ref) {
+        const W = ref.width, H = ref.height;
+        const td = test.data, rd = ref.data;
+        const maxShift = 12;
+        let bestShift = { dx: 0, dy: 0 }, bestCorr = -1;
+        for (let dy = -maxShift; dy <= maxShift; dy += 2) {
+          for (let dx = -maxShift; dx <= maxShift; dx += 2) {
+            let sumT = 0, sumR = 0, sumTR = 0, sumT2 = 0, sumR2 = 0, n = 0;
+            for (let y = Math.max(0, -dy); y < Math.min(H, H - dy); y += 3) {
+              for (let x = Math.max(0, -dx); x < Math.min(W, W - dx); x += 3) {
+                const ti = ((y + dy) * W + (x + dx)) * 4;
+                const ri = (y * W + x) * 4;
+                const lt = 0.299 * td[ti] + 0.587 * td[ti + 1] + 0.114 * td[ti + 2];
+                const lr = 0.299 * rd[ri] + 0.587 * rd[ri + 1] + 0.114 * rd[ri + 2];
+                sumT += lt; sumR += lr; sumTR += lt * lr; sumT2 += lt * lt; sumR2 += lr * lr; n++;
+              }
+            }
+            if (n < 50) continue;
+            const num = n * sumTR - sumT * sumR;
+            const den = Math.sqrt((n * sumT2 - sumT * sumT) * (n * sumR2 - sumR * sumR)) + 1e-9;
+            const corr = num / den;
+            if (corr > bestCorr) { bestCorr = corr; bestShift = { dx, dy }; }
+          }
+        }
+        const out = new Uint8ClampedArray(W * H * 4);
+        const mask = new Uint8Array(W * H);
+        for (let y = 0; y < H; y++) {
+          for (let x = 0; x < W; x++) {
+            const tx = x + bestShift.dx, ty = y + bestShift.dy;
+            const di = (y * W + x) * 4;
+            if (tx >= 0 && tx < W && ty >= 0 && ty < H) {
+              const si = (ty * W + tx) * 4;
+              out[di] = td[si]; out[di + 1] = td[si + 1]; out[di + 2] = td[si + 2]; out[di + 3] = 255;
+              mask[y * W + x] = 1;
+            } else {
+              out[di] = 0; out[di + 1] = 0; out[di + 2] = 0; out[di + 3] = 255;
+            }
+          }
+        }
+        return { data: out, width: W, height: H, shift: bestShift, corr: bestCorr, mask };
+      }
+function channelCorrelation(a, b, channel, mask) {
+        const n = Math.min(a.length, b.length) / 4;
+        let sa = 0, sb = 0, sab = 0, sa2 = 0, sb2 = 0, cnt = 0;
+        for (let i = 0; i < n; i++) {
+          if (mask && !mask[i]) continue;
+          const va = a[i * 4 + channel];
+          const vb = b[i * 4 + channel];
+          sa += va; sb += vb; sab += va * vb; sa2 += va * va; sb2 += vb * vb; cnt++;
+        }
+        if (cnt < 50) return 0;
+        const num = cnt * sab - sa * sb;
+        const den = Math.sqrt((cnt * sa2 - sa * sa) * (cnt * sb2 - sb * sb)) + 1e-9;
+        return num / den;
+      }
+
+      // ================= ЗАГРУЗЧИК OPENCV =================
+      const CV_URLS = [
+        'https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.9.0-release.3/dist/opencv.js',
+        'https://docs.opencv.org/4.9.0/opencv.js'
+      ];
+      const STALL_MS = 20000;
+      const INIT_TIMEOUT_MS = 180000;
+      const btnRetry = document.getElementById('btnRetry');
+
+      const fmtMB = b => (b / 1048576).toFixed(2);
+      const fmtTime = s => {
+        if (!isFinite(s) || s < 0) return '—';
+        s = Math.round(s);
+        return s < 60 ? s + ' с' : Math.floor(s / 60) + ' мин ' + (s % 60) + ' с';
+      };
+
+      function setBar(pct) {
+        if (pct == null) {
+          progressBar.classList.add('indeterminate');
+          progressBar.style.width = '';
+        } else {
+          progressBar.classList.remove('indeterminate');
+          progressBar.style.width = Math.max(0, Math.min(100, pct)) + '%';
+        }
+      }
+
+      async function downloadWithProgress(url) {
+        const ctrl = new AbortController();
+        let lastByteAt = Date.now();
+        const watchdog = setInterval(() => {
+          if (Date.now() - lastByteAt > STALL_MS) ctrl.abort();
+        }, 1000);
+        try {
+          const resp = await fetch(url, {
+            signal: ctrl.signal
+          });
+          if (!resp.ok) throw new Error('Сервер ответил HTTP ' + resp.status);
+          const total = Number(resp.headers.get('content-length')) || 0;
+          const packed = /gzip|br|deflate/i.test(resp.headers.get('content-encoding') || '');
+          const knownTotal = (total && !packed) ? total : 0;
+
+          if (!resp.body || !resp.body.getReader) {
+            setBar(null);
+            progressInfo.textContent = 'Загрузка… (браузер не отдаёт прогресс)';
+            return await resp.text();
+          }
+
+          const reader = resp.body.getReader();
+          const chunks = [];
+          let loaded = 0;
+          const t0 = Date.now();
+          let lastT = t0,
+            lastLoaded = 0,
+            speed = 0;
+
+          while (true) {
+            const {
+              done,
+              value
+            } = await reader.read();
+            if (done) break;
+            chunks.push(value);
+            loaded += value.length;
+            lastByteAt = Date.now();
+            const now = Date.now();
+            if (now - lastT > 400) {
+              const inst = (loaded - lastLoaded) / ((now - lastT) / 1000);
+              speed = speed ? speed * 0.7 + inst * 0.3 : inst;
+              lastT = now;
+              lastLoaded = loaded;
+              if (knownTotal && loaded <= knownTotal) {
+                const pct = loaded / knownTotal * 100;
+                setBar(pct);
+                const eta = speed > 1024 ? (knownTotal - loaded) / speed : NaN;
+                progressInfo.textContent =
+                  pct.toFixed(0) + '% · ' + fmtMB(loaded) + ' / ' + fmtMB(knownTotal) + ' МБ · ' +
+                  fmtMB(speed) + ' МБ/с · осталось ~' + fmtTime(eta);
+              } else {
+                setBar(null);
+                progressInfo.textContent =
+                  fmtMB(loaded) + ' МБ · ' + fmtMB(speed) + ' МБ/с · прошло ' + fmtTime((now - t0) / 1000);
+              }
+            }
+          }
+          const buf = new Uint8Array(loaded);
+          let off = 0;
+          for (const c of chunks) {
+            buf.set(c, off);
+            off += c.length;
+          }
+          return new TextDecoder('utf-8').decode(buf);
+        } finally {
+          clearInterval(watchdog);
+        }
+      }
+
+      function initCv(scriptText) {
+        return new Promise((resolve, reject) => {
+          loadingSubtitle.textContent = 'Инициализация модуля на устройстве…';
+          setBar(null);
+          const timer = setTimeout(() => reject(new Error('Таймаут инициализации')), INIT_TIMEOUT_MS);
+          const s = document.createElement('script');
+          s.textContent = scriptText;
+          document.head.appendChild(s);
+          const t0 = Date.now();
+          const tick = setInterval(() => {
+            progressInfo.textContent = 'Компиляция… прошло ' + fmtTime((Date.now() - t0) / 1000);
+          }, 500);
+          const ok = () => {
+            clearInterval(tick);
+            clearTimeout(timer);
+            resolve();
+          };
+          const wait = () => {
+            const cv = window.cv;
+            if (cv && typeof cv.then === 'function') {
+              cv.then(m => {
+                window.cv = m;
+                ok();
+              }, reject);
+              return;
+            }
+            if (cv && cv.Mat) {
+              ok();
+              return;
+            }
+            if (cv) {
+              cv.onRuntimeInitialized = ok;
+              return;
+            }
+            setTimeout(wait, 100);
+          };
+          wait();
+        });
+      }
+
+      (async () => {
+        try {
+          loadingSubtitle.textContent = 'Загрузка модуля распознавания…';
+          let text = null,
+            lastErr = null;
+          for (let i = 0; i < CV_URLS.length; i++) {
+            try {
+              text = await downloadWithProgress(CV_URLS[i]);
+              break;
+            } catch (err) {
+              lastErr = err;
+              if (i < CV_URLS.length - 1) {
+                progressInfo.textContent = 'Основной источник недоступен, пробую резервный…';
+              }
+            }
+          }
+          if (text == null) throw lastErr || new Error('Не удалось скачать модуль');
+          await initCv(text);
+          cvReady = true;
+          setBar(100);
+          loadingTitle.textContent = 'Готово';
+          loadingSubtitle.textContent = 'Модули загружены';
+          progressInfo.textContent = '';
+          btnProtect.disabled = false;
+          btnVerify.disabled = false;
+          setTimeout(() => {
+            loadingOverlay.style.display = 'none';
+          }, 600);
+        } catch (e) {
+          console.error('CV load error:', e);
+          loadingTitle.textContent = 'Ошибка загрузки';
+          loadingSubtitle.textContent = e.name === 'AbortError' ?
+            'Сервер перестал присылать данные' :
+            (e.message || 'Неизвестная ошибка');
+          progressBar.classList.remove('indeterminate');
+          progressBar.style.background = '#ff453a';
+          progressInfo.textContent = 'Проверьте интернет и нажмите «Повторить»';
+          btnRetry.style.display = 'block';
+        }
+      })();
+      btnRetry.onclick = () => location.reload();
+
+      if (!('indexedDB' in window)) {
+        console.warn('IndexedDB не поддерживается');
+      }
+    })();
+  </script>
+</body>
+
+</html>
