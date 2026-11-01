@@ -99,6 +99,7 @@ background: #2c2c2e; color: #fff; font-size: 16px; margin-bottom: 12px; }
 <div id="progressBar" class="indeterminate"></div>
 </div>
 <div id="progressInfo">Пожалуйста, подождите…</div>
+    <button id="btnRetry" style="display:none;width:80%;max-width:320px;background:#0a84ff">Повторить</button>
 </div>
 
 <div id="camera">
@@ -995,6 +996,8 @@ if (document.hidden) stopAnalysis();
 else if (state !== 'idle' && state !== 'done') startAnalysis();
 });
 // Загрузка OpenCV с отслеживанием прогресса
+
+
 const startTime = Date.now();
 let progressTimer = null;
 function updateProgress() {
@@ -1029,29 +1032,127 @@ document.head.appendChild(script);
       progressBar.classList.remove('indeterminate');
       progressBar.style.width = '100%';
       progressInfo.textContent = 'Загрузка завершена';
-      
-      // Активируем кнопки
+   // ================= ЗАГРУЗЧИК OPENCV =================
+  const CV_URL = 'https://docs.opencv.org/4.9.0/opencv.js';
+  const STALL_MS = 20000;        // нет байтов 20 с -> обрыв
+  const INIT_TIMEOUT_MS = 180000;
+  const btnRetry = document.getElementById('btnRetry');
+
+  const fmtMB = b => (b / 1048576).toFixed(2);
+  const fmtTime = s => {
+    if (!isFinite(s) || s < 0) return '—';
+    s = Math.round(s);
+    return s < 60 ? s + ' с' : Math.floor(s / 60) + ' мин ' + (s % 60) + ' с';
+  };
+  function setBar(pct) {
+    if (pct == null) { progressBar.classList.add('indeterminate'); progressBar.style.width = ''; }
+    else { progressBar.classList.remove('indeterminate');
+           progressBar.style.width = Math.max(0, Math.min(100, pct)) + '%'; }
+  }
+
+  async function downloadWithProgress(url) {
+    const ctrl = new AbortController();
+    let lastByteAt = Date.now();
+    const watchdog = setInterval(() => {
+      if (Date.now() - lastByteAt > STALL_MS) ctrl.abort();
+    }, 1000);
+    try {
+      const resp = await fetch(url, { signal: ctrl.signal });
+      if (!resp.ok) throw new Error('Сервер ответил HTTP ' + resp.status);
+      const total = Number(resp.headers.get('content-length')) || 0;
+      const packed = /gzip|br|deflate/i.test(resp.headers.get('content-encoding') || '');
+      const knownTotal = (total && !packed) ? total : 0;
+
+      if (!resp.body || !resp.body.getReader) {
+        setBar(null);
+        progressInfo.textContent = 'Загрузка… (браузер не отдаёт прогресс)';
+        return await resp.text();
+      }
+
+      const reader = resp.body.getReader();
+      const chunks = []; let loaded = 0;
+      const t0 = Date.now(); let lastT = t0, lastLoaded = 0, speed = 0;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value); loaded += value.length; lastByteAt = Date.now();
+        const now = Date.now();
+        if (now - lastT > 400) {
+          const inst = (loaded - lastLoaded) / ((now - lastT) / 1000);
+          speed = speed ? speed * 0.7 + inst * 0.3 : inst;
+          lastT = now; lastLoaded = loaded;
+          if (knownTotal) {
+            const pct = loaded / knownTotal * 100;
+            setBar(pct);
+            const eta = speed > 1024 ? (knownTotal - loaded) / speed : NaN;
+            progressInfo.textContent =
+              pct.toFixed(0) + '% · ' + fmtMB(loaded) + ' / ' + fmtMB(knownTotal) + ' МБ · ' +
+              fmtMB(speed) + ' МБ/с · осталось ~' + fmtTime(eta);
+          } else {
+            setBar(null);
+            progressInfo.textContent =
+              fmtMB(loaded) + ' МБ · ' + fmtMB(speed) + ' МБ/с · прошло ' + fmtTime((now - t0) / 1000);
+          }
+        }
+      }
+      const buf = new Uint8Array(loaded); let off = 0;
+      for (const c of chunks) { buf.set(c, off); off += c.length; }
+      return new TextDecoder('utf-8').decode(buf);
+    } finally { clearInterval(watchdog); }
+  }
+
+  function initCv(scriptText) {
+    return new Promise((resolve, reject) => {
+      loadingSubtitle.textContent = 'Инициализация модуля на устройстве…';
+      setBar(null);
+      const timer = setTimeout(() => reject(new Error('Таймаут инициализации')), INIT_TIMEOUT_MS);
+      const s = document.createElement('script');
+      s.textContent = scriptText;
+      document.head.appendChild(s);
+      const t0 = Date.now();
+      const tick = setInterval(() => {
+        progressInfo.textContent = 'Компиляция… прошло ' + fmtTime((Date.now() - t0) / 1000);
+      }, 500);
+      const ok = () => { clearInterval(tick); clearTimeout(timer); resolve(); };
+      const wait = () => {
+        const cv = window.cv;
+        if (cv && typeof cv.then === 'function') { cv.then(m => { window.cv = m; ok(); }, reject); return; }
+        if (cv && cv.Mat) { ok(); return; }
+        if (cv) { cv.onRuntimeInitialized = ok; return; }
+        setTimeout(wait, 100);
+      };
+      wait();
+    });
+  }
+
+  (async () => {
+    try {
+      loadingSubtitle.textContent = 'Загрузка модуля распознавания…';
+      const text = await downloadWithProgress(CV_URL);
+      await initCv(text);
+      cvReady = true;
+      setBar(100);
+      loadingTitle.textContent = 'Готово';
+      loadingSubtitle.textContent = 'Модули загружены';
+      progressInfo.textContent = '';
       btnProtect.disabled = false;
       btnVerify.disabled = false;
-      
-      // Скрываем оверлей через 1 секунду
-      setTimeout(() => {
-        loadingOverlay.style.display = 'none';
-      }, 1000);
-    } else {
-      setTimeout(checkCv, 100);
+      setTimeout(() => { loadingOverlay.style.display = 'none'; }, 600);
+    } catch (e) {
+      console.error('CV load error:', e);
+      loadingTitle.textContent = 'Ошибка загрузки';
+      loadingSubtitle.textContent = e.name === 'AbortError'
+        ? 'Сервер перестал присылать данные'
+        : (e.message || 'Неизвестная ошибка');
+      progressBar.classList.remove('indeterminate');
+      progressBar.style.background = '#ff453a';
+      progressInfo.textContent = 'Проверьте интернет и нажмите «Повторить»';
+      btnRetry.style.display = 'block';
     }
-  };
-  checkCv();
-})
-.catch(err => {
-  clearInterval(progressTimer);
-  loadingTitle.textContent = 'Ошибка загрузки';
-  loadingSubtitle.textContent = 'Не удалось загрузить модули распознавания';
-  progressBar.style.background = '#ff453a';
-  progressInfo.textContent = 'Проверьте интернет-соединение и обновите страницу';
-  console.error('OpenCV load error:', err);
-});
+  })();
+  btnRetry.onclick = () => location.reload();     
+
   if (!('indexedDB' in window)) {
 console.warn('IndexedDB не поддерживается');
 }
