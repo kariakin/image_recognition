@@ -1,5 +1,6 @@
 
 <!DOCTYPE html>
+<!-- Art Inspector | Сборка: 02.11.2026 04:00 (Asia/Shanghai) -->
 <html lang="ru">
 
 <head>
@@ -328,6 +329,10 @@
       margin-top: 8px;
     }
       #modal p { white-space: pre-line; }
+    #buildTag { position: absolute; bottom: calc(10px + env(safe-area-inset-bottom));
+      left: 0; right: 0; text-align: center; font-size: 11px; color: #666; }
+    #buildTagLoading { position: absolute; bottom: calc(10px + env(safe-area-inset-bottom));
+      left: 0; right: 0; text-align: center; font-size: 11px; color: #555; }
   </style>
 </head>
 
@@ -337,6 +342,7 @@
       <h1>Art Inspector</h1>
       <button id="btnProtect" class="big" disabled>Защита</button>
       <button id="btnVerify" class="big" disabled>Проверка</button>
+      <div id="buildTag">сборка 02.11.2026 04:00 (Asia/Shanghai)</div>
     </div>
 
     <div id="loadingOverlay">
@@ -347,6 +353,7 @@
       </div>
       <div id="progressInfo">Пожалуйста, подождите…</div>
       <button id="btnRetry" style="display:none;width:80%;max-width:320px;background:#0a84ff">Повторить</button>
+      <div id="buildTagLoading">сборка 02.11.2026 04:00 (Asia/Shanghai)</div>
     </div>
 
     <div id="camera">
@@ -385,6 +392,10 @@
 //  Состояния: idle -> detect -> (protect: zone_search | verify: lookup)
 //             -> locked -> shoot -> process
 // ==========================================================================
+
+// ---------- Версия ----------
+const BUILD_STAMP = '02.11.2026 04:00 (Asia/Shanghai)';
+console.log('Art Inspector — сборка ' + BUILD_STAMP);
 
 // ---------- DOM ----------
 const home = document.getElementById('home');
@@ -554,13 +565,11 @@ function medianGray(gray) {
   s.sort((a, b) => a - b);
   return s.length ? s[s.length >> 1] : 128;
 }
-
 function detectBounds() {
   if (!cvReady || !window.cv || !video.videoWidth) return null;
   const fr = grabFrame(FRAME_W);
   const cv = window.cv;
-  let src = null, gray = null, blur = null, edges = null, kernel = null,
-    contours = null, hierarchy = null;
+  let src = null, gray = null, blur = null, edges = null, kernel = null;
   try {
     src = cv.imread(workCanvas);
     gray = new cv.Mat();
@@ -572,10 +581,37 @@ function detectBounds() {
     const lo = Math.max(20, Math.min(110, Math.round(med * 0.6)));
     const hi = Math.max(60, Math.min(220, Math.round(med * 1.6)));
     edges = new cv.Mat();
-    cv.Canny(blur, edges, lo, hi);
     kernel = cv.Mat.ones(3, 3, cv.CV_8U);
+    // проход 1: нормальные пороги
+    let r = scanQuads(cv, edges, kernel, blur, lo, hi, fr);
+    // проход 2: низкий контраст (светлая картина на светлой стене)
+    if (!r.best && !r.sawFill) {
+      r = scanQuads(cv, edges, kernel, blur,
+        Math.max(8, Math.round(lo * 0.45)), Math.max(28, Math.round(hi * 0.45)), fr);
+    }
+    if (!r.best && r.sawFill) return { fills: true }; // картина заполняет кадр
+    return r.best;
+  } catch (e) {
+    console.warn('detectBounds:', e);
+    return null;
+  } finally {
+    try {
+      if (src) src.delete();
+      if (gray) gray.delete();
+      if (blur) blur.delete();
+      if (edges) edges.delete();
+      if (kernel) kernel.delete();
+    } catch (e) {}
+  }
+}
+
+function scanQuads(cv, edges, kernel, blur, lo, hi, fr) {
+  let contours = null, hierarchy = null;
+  try {
+    cv.Canny(blur, edges, lo, hi);
     cv.dilate(edges, edges, kernel);
     cv.dilate(edges, edges, kernel);
+    cv.erode(edges, edges, kernel); // замыкание разрывов границы
     contours = new cv.MatVector();
     hierarchy = new cv.Mat();
     cv.findContours(edges, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
@@ -587,23 +623,27 @@ function detectBounds() {
       try {
         const area = cv.contourArea(cnt);
         if (area < imgArea * 0.05) continue;
-        if (area > imgArea * 0.965) { sawFill = true; continue; } // граница ушла за кадр — картина на весь кадр
+        if (area > imgArea * 0.965) { sawFill = true; continue; } // граница ушла за кадр
         const peri = cv.arcLength(cnt, true);
         approx = new cv.Mat();
         cv.approxPolyDP(cnt, approx, 0.045 * peri, true);
-        if (approx.rows !== 4) continue; // нужен четырёхугольник
+        const rows = approx.rows;
+        if (rows < 4 || rows > 6) continue;
         const pts = [];
-        for (let j = 0; j < 4; j++) pts.push({ x: approx.data32S[j * 2], y: approx.data32S[j * 2 + 1] });
-        let quad = true;
-        for (let j = 0; j < 4; j++) {
-          const p1 = pts[j], p2 = pts[(j + 1) % 4], p3 = pts[(j + 2) % 4];
-          const v1x = p2.x - p1.x, v1y = p2.y - p1.y;
-          const v2x = p3.x - p2.x, v2y = p3.y - p2.y;
-          const dot = v1x * v2x + v1y * v2y;
-          const l1 = Math.hypot(v1x, v1y), l2 = Math.hypot(v2x, v2y);
-          const ang = Math.abs(Math.acos(Math.max(-1, Math.min(1, dot / (l1 * l2 + 1e-9)))) * 180 / Math.PI);
-          if (ang < 62 || ang > 118) { quad = false; break; }
+        for (let j = 0; j < rows; j++) pts.push({ x: approx.data32S[j * 2], y: approx.data32S[j * 2 + 1] });
+        let shapeOk = true;
+        if (rows === 4) {
+          for (let j = 0; j < 4; j++) {
+            const p1 = pts[j], p2 = pts[(j + 1) % 4], p3 = pts[(j + 2) % 4];
+            const v1x = p2.x - p1.x, v1y = p2.y - p1.y;
+            const v2x = p3.x - p2.x, v2y = p3.y - p2.y;
+            const dot = v1x * v2x + v1y * v2y;
+            const l1 = Math.hypot(v1x, v1y), l2 = Math.hypot(v2x, v2y);
+            const ang = Math.abs(Math.acos(Math.max(-1, Math.min(1, dot / (l1 * l2 + 1e-9)))) * 180 / Math.PI);
+            if (ang < 55 || ang > 125) { shapeOk = false; break; }
+          }
         }
+        if (!shapeOk) continue;
         const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
         const minX = Math.min(...xs), maxX = Math.max(...xs);
         const minY = Math.min(...ys), maxY = Math.max(...ys);
@@ -611,10 +651,10 @@ function detectBounds() {
         if (bw < 12 || bh < 12) continue;
         if (Math.max(bw, bh) / Math.min(bw, bh) > 4.5) continue;
         const fill = area / (bw * bh);
-        if (fill < 0.62) continue;
+        if (fill < (rows === 4 ? 0.62 : 0.78)) continue; // 5-6 вершин — только почти идеальные
         const ccx = (minX + maxX) / 2 / fr.W, ccy = (minY + maxY) / 2 / fr.H;
         const centrality = 1 - Math.min(1, Math.hypot(ccx - 0.5, ccy - 0.5) / 0.7);
-        const score = area * fill * (0.7 + 0.3 * centrality) * (quad ? 1.0 : 0.7);
+        const score = area * fill * (0.7 + 0.3 * centrality) * (rows === 4 ? 1.0 : 0.85);
         if (!best || score > best.score) {
           best = {
             fx: minX / fr.W, fy: minY / fr.H, fw: bw / fr.W, fh: bh / fr.H,
@@ -626,22 +666,23 @@ function detectBounds() {
         cnt.delete();
       }
     }
-    if (!best && sawFill) return { fills: true }; // картина заполняет кадр
-    return best;
-  } catch (e) {
-    console.warn('detectBounds:', e);
-    return null;
+    return { best, sawFill };
   } finally {
     try {
-      if (src) src.delete();
-      if (gray) gray.delete();
-      if (blur) blur.delete();
-      if (edges) edges.delete();
-      if (kernel) kernel.delete();
       if (contours) contours.delete();
       if (hierarchy) hierarchy.delete();
     } catch (e) {}
   }
+}
+
+// картина, скорее всего, заполняет кадр: большая площадь ИЛИ упирается в 2+ края кадра
+function looksLikeFills() {
+  if (!paintBox) return false;
+  if (paintBox.areaFrac >= PAINT_FILL) return true;
+  const b = paintBox;
+  const touches = (b.fx < 0.05 ? 1 : 0) + (b.fy < 0.05 ? 1 : 0) +
+    (b.fx + b.fw > 0.95 ? 1 : 0) + (b.fy + b.fh > 0.95 ? 1 : 0);
+  return touches >= 2 && b.areaFrac >= 0.45;
 }
 
 // гистерезис: рамка показывается после 2 попаданий, скрывается после 3 промахов (п.3)
@@ -665,7 +706,7 @@ function updateBoundary() {
     }
   } else {
     paintMisses++; paintHits = 0;
-    if (paintMisses >= 3) boundaryVisible = false;
+    if (paintMisses >= 4) boundaryVisible = false;
   }
   return det;
 }
@@ -1016,7 +1057,7 @@ function tickDetect() {
     return;
   }
   // граница не видна
-  if (paintBox && paintBox.areaFrac >= PAINT_FILL && paintMisses >= 3) {
+  if (looksLikeFills() && paintMisses >= 3) {
     // рамка ушла за границы кадра при приближении — продолжаем работу (п.3)
     assumeFillsFrame();
     onPaintingFilled();
@@ -1058,7 +1099,7 @@ function tickZoneSearch() {
   if (!boundaryVisible) {
     if (paintFillsFrame) {
       // норма: картина на весь кадр, граница вне кадра (п.3) — продолжаем поиск зоны
-    } else if (paintBox && paintBox.areaFrac >= PAINT_FILL && paintMisses >= 3) {
+    } else if (looksLikeFills() && paintMisses >= 3) {
       assumeFillsFrame(); // приблизились — граница ушла за кадр
     } else if (paintMisses > 6) {
       // действительно отвели камеру — назад к поиску границы
