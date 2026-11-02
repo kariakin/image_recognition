@@ -1,6 +1,6 @@
 
 <!DOCTYPE html>
-<!-- Art Inspector | Сборка: 02.11.2026 04:00 (Asia/Shanghai) -->
+<!-- Art Inspector | Сборка: 02.11.2026 05:43 (Asia/Shanghai) -->
 <html lang="ru">
 
 <head>
@@ -342,7 +342,7 @@
       <h1>Art Inspector</h1>
       <button id="btnProtect" class="big" disabled>Защита</button>
       <button id="btnVerify" class="big" disabled>Проверка</button>
-      <div id="buildTag">сборка 02.11.2026 04:00 (Asia/Shanghai)</div>
+      <div id="buildTag">сборка 02.11.2026 05:43 (Asia/Shanghai)</div>
     </div>
 
     <div id="loadingOverlay">
@@ -353,7 +353,7 @@
       </div>
       <div id="progressInfo">Пожалуйста, подождите…</div>
       <button id="btnRetry" style="display:none;width:80%;max-width:320px;background:#0a84ff">Повторить</button>
-      <div id="buildTagLoading">сборка 02.11.2026 04:00 (Asia/Shanghai)</div>
+      <div id="buildTagLoading">сборка 02.11.2026 05:43 (Asia/Shanghai)</div>
     </div>
 
     <div id="camera">
@@ -394,7 +394,7 @@
 // ==========================================================================
 
 // ---------- Версия ----------
-const BUILD_STAMP = '02.11.2026 04:00 (Asia/Shanghai)';
+const BUILD_STAMP = '02.11.2026 05:43 (Asia/Shanghai)';
 console.log('Art Inspector — сборка ' + BUILD_STAMP);
 
 // ---------- DOM ----------
@@ -427,7 +427,8 @@ const DB_NAME = 'art-inspector-db', STORE = 'paintings';
 const TICK_MS = 350;             // период анализа кадра
 const FRAME_W = 256;             // даунскейл для поиска границы картины
 const TRACK_W = 160;             // даунскейл для трекинга зоны
-const PAINT_FILL = 0.72;         // картина должна занять >= 72% кадра (п.3)
+const FILL_AREA = 0.85;          // переход «картина на весь кадр» при площади >= 85% (п.3)
+const EDGE_TOL = 0.07;           // допуск: граница картины почти у края кадра
 const FILL_HITS = 3;             // стабильных срабатываний подряд
 const DETECT_TIMEOUT_MS = 20000; // п.2: не обнаружено -> возврат назад
 const BLOCK = 28;                // блок поиска энтропии (в px кропа полотна)
@@ -435,8 +436,10 @@ const MIN_ENTROPY = 4.6;         // бит (гистограмма 64 бина)
 const ZONE_FRAC = 0.24;          // сторона зелёного квадрата / меньшая сторона картины
 const CENTER_MARGIN = 0.16;      // отступ от краёв полотна при поиске зоны (п.3: без рамки)
 const ZONE_STABLE_HITS = 4;
-const TRACK_SCALES = [0.9, 1.0, 1.15, 1.35]; // масштабы шаблона при трекинге (п.5)
+const TRACK_SCALES = [0.85, 1.0, 1.18, 1.4];    // масштабы шаблона, узкий поиск (п.5)
+const TRACK_SCALES_WIDE = [0.7, 1.0, 1.4, 1.9]; // масштабы шаблона, широкий поиск
 const TRACK_MIN_SCORE = 0.40;
+const TRACK_MIN_SCORE2 = 0.50;   // порог широкого поиска — строже, чтобы не цеплять мусор
 const ROI_PAD = 1.5;             // расширение области поиска трекинга
 const LAP_MIN = 35;              // порог резкости (дисперсия лапласиана)
 const READY_SIDE = 0.28;         // зона >= 28% ширины кадра — «можно снимать» (п.6)
@@ -459,6 +462,9 @@ let paintBox = null;          // граница картины в долях к�
 let paintHits = 0, paintMisses = 0;
 let boundaryVisible = false;  // видна ли граница картины (п.3: рамка появляется/исчезает)
 let paintFillsFrame = false;  // картина заполняет кадр, граница вне кадра — это норма при приближении
+let boundaryPhase = true;     // фаза поиска рамки картины; после перехода к фичам ОТКЛЮЧАЕТСЯ навсегда
+let tmplSide = 0;             // ширина зоны (доля кадра) на момент захвата шаблона фичей
+let tmplRefreshTick = -99;    // тик последнего обновления шаблона
 let fillHits = 0;
 
 let zoneEMA = null;           // кандидат зоны в координатах полотна {cx,cy,s}
@@ -678,15 +684,16 @@ function scanQuads(cv, edges, kernel, blur, lo, hi, fr) {
 // картина, скорее всего, заполняет кадр: большая площадь ИЛИ упирается в 2+ края кадра
 function looksLikeFills() {
   if (!paintBox) return false;
-  if (paintBox.areaFrac >= PAINT_FILL) return true;
+  if (paintBox.areaFrac >= 0.60) return true;
   const b = paintBox;
   const touches = (b.fx < 0.05 ? 1 : 0) + (b.fy < 0.05 ? 1 : 0) +
     (b.fx + b.fw > 0.95 ? 1 : 0) + (b.fy + b.fh > 0.95 ? 1 : 0);
-  return touches >= 2 && b.areaFrac >= 0.45;
+  return touches >= 2 && b.areaFrac >= 0.40;
 }
 
 // гистерезис: рамка показывается после 2 попаданий, скрывается после 3 промахов (п.3)
 function updateBoundary() {
+  if (!boundaryPhase) return null; // поиск рамки прекращён — работаем только по фичам
   const det = detectBounds();
   if (det && det.fills) {
     // картина заполняет кадр: границ не видно — при приближении это норма (п.3)
@@ -697,6 +704,12 @@ function updateBoundary() {
     return det;
   }
   if (det) {
+    // защита от ложных контуров при приближении: площадь не должна резко «схлопываться»
+    if (paintBox && paintBox.areaFrac >= 0.30 && det.areaFrac < paintBox.areaFrac * 0.55 && paintMisses < 6) {
+      paintMisses++; paintHits = 0;
+      if (paintMisses >= 4) boundaryVisible = false;
+      return null;
+    }
     paintHits++; paintMisses = 0;
     if (paintHits >= 2) {
       paintBox = paintBox ? emaBox(paintBox, det, 0.45) : Object.assign({}, det);
@@ -712,10 +725,21 @@ function updateBoundary() {
 }
 
 // граница ушла за кадр при приближении: считаем, что картина = весь кадр
-function assumeFillsFrame() {
-  paintBox = { fx: 0, fy: 0, fw: 1, fh: 1, areaFrac: 1 };
+function boxNearFrameEdges(b) {
+  // границы картины почти совпадают с границами кадра
+  return b.fx <= EDGE_TOL && b.fy <= EDGE_TOL &&
+    (b.fx + b.fw) >= 1 - EDGE_TOL && (b.fy + b.fh) >= 1 - EDGE_TOL;
+}
+
+// переход «картина на весь кадр»: поиск рамки ПРЕКРАЩАЕТСЯ, дальше — только фичи
+function transitionToFills(fullFrame) {
+  fillHits = 0;
+  if (fullFrame || !paintBox) {
+    paintBox = { fx: 0, fy: 0, fw: 1, fh: 1, areaFrac: 1 };
+  }
+  boundaryPhase = false;      // больше не ищем жёлтую рамку в этой сессии
+  boundaryVisible = false;    // жёлтая рамка скрывается (п.3)
   paintFillsFrame = true;
-  boundaryVisible = false;
 }
 
 // ==========================================================================
@@ -852,20 +876,7 @@ function zoneToFrameFrac(zc) {
     fw: side / vw, fh: side / vh
   };
 }
-function frameToZoneBase(tb) {
-  if (!paintBox || !zoneBase) return zoneBase;
-  const vw = video.videoWidth || 1, vh = video.videoHeight || 1;
-  const paintW = paintBox.fw * vw, paintH = paintBox.fh * vh;
-  const m = Math.min(paintW, paintH);
-  if (m < 4) return zoneBase;
-  const cxPx = (tb.fx + tb.fw / 2) * vw, cyPx = (tb.fy + tb.fh / 2) * vh;
-  const side = Math.min(tb.fw * vw, tb.fh * vh);
-  return {
-    cx: Math.max(0, Math.min(1, (cxPx - paintBox.fx * vw) / paintW)),
-    cy: Math.max(0, Math.min(1, (cyPx - paintBox.fy * vh) / paintH)),
-    s: side / m
-  };
-}
+
 
 // ==========================================================================
 //  П.5/15 — трекинг зелёной зоны: шаблон + многомерный matchTemplate
@@ -882,6 +893,8 @@ function captureTemplate(tb) {
   tmplData = new Uint8ClampedArray(TMPL * TMPL);
   for (let i = 0, p = 0; i < tmplData.length; i++, p += 4) tmplData[i] = grayOf(d, p);
   if (tmplMat) { try { tmplMat.delete(); } catch (e) {} tmplMat = null; }
+  tmplSide = tb.fw;
+  tmplRefreshTick = tickCount;
 }
 function tmplToMat(cv) {
   if (!tmplMat && tmplData) {
@@ -890,7 +903,6 @@ function tmplToMat(cv) {
   }
   return tmplMat;
 }
-
 function trackZoneStep() {
   if (!cvReady || !window.cv || !tmplData || !video.videoWidth) return false;
   const cv = window.cv;
@@ -898,14 +910,43 @@ function trackZoneStep() {
   let pred = trackBox;
   if (!pred && zoneBase) pred = zoneToFrameFrac(zoneBase);
   if (!pred) return false;
+  // уровень 1: рядом с последней позицией
+  let r = matchAt(cv, fr, pred, ROI_PAD, TRACK_SCALES, TRACK_MIN_SCORE);
+  let score = r.score;
+  if (!r.ok) {
+    // уровень 2: расширенная область вокруг последней позиции
+    const r2 = matchAt(cv, fr, pred, ROI_PAD * 2.4, TRACK_SCALES_WIDE, TRACK_MIN_SCORE2);
+    score = Math.max(score, r2.score);
+    if (r2.ok) r = r2;
+  }
+  if (!r.ok && trackMisses >= 3 && tickCount % 4 === 0) {
+    // уровень 3: глобальный поиск зоны по всему кадру (пере-захват по фичам)
+    const sw = trackBox ? Math.max(trackBox.fw, trackBox.fh) : 0.3;
+    const predFull = { fx: 0.5 - sw / 2, fy: 0.5 - sw / 2, fw: sw, fh: sw };
+    const r3 = matchAt(cv, fr, predFull, 4.0, TRACK_SCALES_WIDE, TRACK_MIN_SCORE2);
+    score = Math.max(score, r3.score);
+    if (r3.ok) r = r3;
+  }
+  lastTrackScore = score;
+  if (r.ok) {
+    trackBox = trackBox ? emaBox(trackBox, r.box, 0.5) : r.box;
+    trackMisses = 0;
+    return true;
+  }
+  trackMisses++;
+  return false;
+}
+
+// совпадение фичей шаблона в заданной области кадра (NCC matchTemplate)
+function matchAt(cv, fr, pred, pad, scales, minScore) {
   const cx = (pred.fx + pred.fw / 2) * fr.W, cy = (pred.fy + pred.fh / 2) * fr.H;
   const side = Math.max(pred.fw * fr.W, pred.fh * fr.H);
-  const roiHalf = Math.max(side * ROI_PAD, 24);
-  let rx = Math.max(0, Math.round(cx - roiHalf));
-  let ry = Math.max(0, Math.round(cy - roiHalf));
-  let rw = Math.min(Math.round(roiHalf * 2), fr.W - rx);
-  let rh = Math.min(Math.round(roiHalf * 2), fr.H - ry);
-  if (rw < 24 || rh < 24) return false;
+  const roiHalf = Math.max(side * pad, 24);
+  const rx = Math.max(0, Math.round(cx - roiHalf));
+  const ry = Math.max(0, Math.round(cy - roiHalf));
+  const rw = Math.min(Math.round(roiHalf * 2), fr.W - rx);
+  const rh = Math.min(Math.round(roiHalf * 2), fr.H - ry);
+  if (rw < 24 || rh < 24) return { ok: false, score: 0, box: null };
   let src = null, gray = null, gblur = null, roi = null, res = null, tS = null, tB = null;
   try {
     src = cv.imread(workCanvas);
@@ -915,13 +956,13 @@ function trackZoneStep() {
     cv.GaussianBlur(gray, gblur, new cv.Size(3, 3), 0);
     roi = new cv.Mat(gblur, new cv.Rect(rx, ry, rw, rh));
     const tBase = tmplToMat(cv);
-    if (!tBase) return false;
+    if (!tBase) return { ok: false, score: 0, box: null };
     let best = null;
-    for (const sc of TRACK_SCALES) {
-      const t = Math.round(side * sc);
-      if (t < 14 || t >= rw - 2 || t >= rh - 2) continue;
+    for (const sc of scales) {
+      const ts2 = Math.round(side * sc);
+      if (ts2 < 14 || ts2 >= rw - 2 || ts2 >= rh - 2) continue;
       tS = new cv.Mat();
-      cv.resize(tBase, tS, new cv.Size(t, t), 0, 0, cv.INTER_LINEAR);
+      cv.resize(tBase, tS, new cv.Size(ts2, ts2), 0, 0, cv.INTER_LINEAR);
       tB = new cv.Mat();
       cv.GaussianBlur(tS, tB, new cv.Size(3, 3), 0);
       res = new cv.Mat();
@@ -931,26 +972,18 @@ function trackZoneStep() {
       tS.delete(); tS = null;
       res.delete(); res = null;
       if (isFinite(mm.maxVal) && (!best || mm.maxVal > best.score)) {
-        best = { score: mm.maxVal, x: mm.maxLoc.x, y: mm.maxLoc.y, t };
+        best = { score: mm.maxVal, x: mm.maxLoc.x, y: mm.maxLoc.y, t: ts2 };
       }
     }
-    if (best && best.score >= TRACK_MIN_SCORE) {
-      const nb = {
-        fx: (rx + best.x) / fr.W, fy: (ry + best.y) / fr.H,
-        fw: best.t / fr.W, fh: best.t / fr.H
-      };
-      trackBox = trackBox ? emaBox(trackBox, nb, 0.5) : nb;
-      lastTrackScore = best.score;
-      trackMisses = 0;
-      return true;
-    }
-    lastTrackScore = best ? best.score : 0;
-    trackMisses++;
-    return false;
+    if (!best) return { ok: false, score: 0, box: null };
+    const box = {
+      fx: (rx + best.x) / fr.W, fy: (ry + best.y) / fr.H,
+      fw: best.t / fr.W, fh: best.t / fr.H
+    };
+    return { ok: best.score >= minScore, score: best.score, box };
   } catch (e) {
-    console.warn('trackZoneStep:', e);
-    trackMisses++;
-    return false;
+    console.warn('matchAt:', e);
+    return { ok: false, score: 0, box: null };
   } finally {
     try {
       if (res) res.delete();
@@ -1044,22 +1077,25 @@ function tickDetect() {
     fillHits++;
     setHint('Картина на весь кадр. Держите камеру неподвижно…');
     setStatus('Картина заполняет кадр');
-    if (fillHits >= FILL_HITS) { assumeFillsFrame(); onPaintingFilled(); }
+    if (fillHits >= FILL_HITS) { transitionToFills(true); onPaintingFilled(); }
     return;
   }
   if (boundaryVisible && paintBox) {
-    setHint('Картина обнаружена. Приближайтесь, пока она не займёт весь кадр.');
-    setStatus(`Граница: ${Math.round(paintBox.areaFrac * 100)}% кадра · нужно ≥ ${Math.round(PAINT_FILL * 100)}%`);
-    if (paintBox.areaFrac >= PAINT_FILL) {
+    const nearEdges = boxNearFrameEdges(paintBox);
+    setHint(nearEdges
+      ? 'Картина почти на весь кадр — держите камеру неподвижно…'
+      : 'Картина обнаружена. Приближайтесь, пока она не займёт весь кадр.');
+    setStatus(`Граница: ${Math.round(paintBox.areaFrac * 100)}% кадра · нужно ≥ ${Math.round(FILL_AREA * 100)}% или рамка у краёв кадра`);
+    if (paintBox.areaFrac >= FILL_AREA || nearEdges) {
       fillHits++;
-      if (fillHits >= FILL_HITS) onPaintingFilled();
+      if (fillHits >= FILL_HITS) { transitionToFills(false); onPaintingFilled(); }
     } else fillHits = 0;
     return;
   }
   // граница не видна
   if (looksLikeFills() && paintMisses >= 3) {
-    // рамка ушла за границы кадра при приближении — продолжаем работу (п.3)
-    assumeFillsFrame();
+    // рамка ушла за границы кадра при приближении — переходим к фичам (п.3)
+    transitionToFills(true);
     onPaintingFilled();
     return;
   }
@@ -1095,21 +1131,7 @@ function onPaintingFilled() {
   }
 }
 function tickZoneSearch() {
-  if (tickCount % 2 === 0) updateBoundary();
-  if (!boundaryVisible) {
-    if (paintFillsFrame) {
-      // норма: картина на весь кадр, граница вне кадра (п.3) — продолжаем поиск зоны
-    } else if (looksLikeFills() && paintMisses >= 3) {
-      assumeFillsFrame(); // приблизились — граница ушла за кадр
-    } else if (paintMisses > 6) {
-      // действительно отвели камеру — назад к поиску границы
-      state = 'detect';
-      fillHits = 0; zoneEMA = null; zoneStable = 0;
-      syncShotBtn();
-      setHint('Картина потеряна — наведите камеру заново…');
-      return;
-    }
-  }
+  // поиск рамки картины ПРЕКРАЩЁН — зона ищется по зафиксированному paintBox
   const z = searchZone();
   if (z && z.H >= MIN_ENTROPY) {
     zoneEMA = zoneEMA
@@ -1121,9 +1143,7 @@ function tickZoneSearch() {
     if (zoneStable >= ZONE_STABLE_HITS) lockZone();
   } else {
     zoneStable = 0;
-    setHint(paintFillsFrame
-      ? 'Картина на весь кадр — ищу текстурную зону ближе к центру…'
-      : 'Ищем текстурную зону ближе к центру картины…');
+    setHint('Картина на весь кадр — ищу текстурную зону ближе к центру…');
     setStatus(z ? `Лучшая энтропия ${z.H.toFixed(2)} бит — нужно ≥ ${MIN_ENTROPY}` : 'Кандидат не найден');
   }
 }
@@ -1138,22 +1158,16 @@ function lockZone() {
   syncShotBtn();
   setHint('Зона найдена! Приблизьтесь к зелёному квадрату, держите резкость — затем нажмите «Фото».');
 }
-
 function tickLocked() {
-  if (tickCount % 3 === 0) updateBoundary(); // рамка появляется/исчезает по границе (п.3)
-  const ok = trackZoneStep();                // п.5: квадрат фиксирован на зоне
-  if (!ok && boundaryVisible && paintBox && zoneBase) {
-    trackBox = zoneToFrameFrac(zoneBase);    // фолбэк по координатам полотна
-  }
-  if (ok && boundaryVisible && paintBox && tickCount % 6 === 0) {
-    zoneBase = frameToZoneBase(trackBox);    // ресинхронизация координат полотна
-  }
+  // п.5/15: зелёная зона позиционируется ИСКЛЮЧИТЕЛЬНО по совпадению фичей
+  const ok = trackZoneStep();
+  if (ok) maybeRefreshTemplate();
   const sh = zoneSharp();
   const ready = sh && sh.lapVar >= LAP_MIN && sh.sideFrac >= READY_SIDE;
-  if (trackMisses > 5 && !boundaryVisible) {
+  if (trackMisses > 5) {
     setHint(trackBox && trackBox.fw > 0.85
       ? 'Слишком близко — зона больше кадра. Немного отведите камеру назад.'
-      : 'Зона потеряна. Медленно отведите камеру назад, чтобы снова увидеть картину.');
+      : 'Зона потеряна. Нажмите «Отмена» и начните заново, показав картину целиком.');
   } else if (ready) {
     setHint(mode === 'protect'
       ? 'Резкость в норме — нажмите «Фото»: потребуется 5 снимков с небольшими сдвигами.'
@@ -1166,16 +1180,23 @@ function tickLocked() {
   const parts = [];
   if (mode === 'verify' && baseSim != null) parts.push(`сходство ${(baseSim * 100).toFixed(0)}%`);
   if (zoneEntropy) parts.push(`энтропия ${zoneEntropy.toFixed(2)}`);
-  parts.push(`трекинг ${Math.round(lastTrackScore * 100)}%`);
+  parts.push(`фичи ${Math.round(lastTrackScore * 100)}%`);
   if (sh) parts.push(`резкость ${sh.lapVar.toFixed(0)}${ready ? ' ✓' : ''}`);
   setStatus(parts.join(' · '));
 }
 
+function maybeRefreshTemplate() {
+  // при приближении обновляем шаблон фичей на более крупный и резкий
+  if (lastTrackScore >= 0.55 && tmplSide > 0 && trackBox &&
+      trackBox.fw > tmplSide * 1.6 && tickCount - tmplRefreshTick >= 8) {
+    captureTemplate(trackBox);
+  }
+}
 function tickShoot() {
-  // во время серии снимков трекинг продолжается — квадрат остаётся на зоне (п.6)
+  // во время серии трекинг по фичам продолжается — квадрат остаётся на зоне (п.6)
   if (tickCount % 2 === 0) {
     const ok = trackZoneStep();
-    if (!ok && boundaryVisible && paintBox && zoneBase) trackBox = zoneToFrameFrac(zoneBase);
+    if (ok) maybeRefreshTemplate();
   }
 }
 
@@ -1230,6 +1251,8 @@ async function handleVerifyLookup() {
     ? new Uint8ClampedArray(rec.zoneTemplate) : null;
   if (tmplMat) { try { tmplMat.delete(); } catch (e) {} tmplMat = null; }
   trackBox = zoneToFrameFrac(zoneBase); // п.13-14: зелёная зона по координатам из базы
+  tmplSide = trackBox.fw;
+  tmplRefreshTick = tickCount;
   state = 'locked';
   trackMisses = 0;
   syncShotBtn();
@@ -1533,6 +1556,7 @@ function syncShotBtn() {
 
 function resetSession() {
   paintBox = null; paintHits = 0; paintMisses = 0; boundaryVisible = false; paintFillsFrame = false;
+  boundaryPhase = true; tmplSide = 0; tmplRefreshTick = -99;
   fillHits = 0;
   zoneEMA = null; zoneBase = null; zoneStable = 0; zoneEntropy = 0;
   trackBox = null; trackMisses = 0; lastTrackScore = 0; dispBox = null;
