@@ -589,6 +589,12 @@ function detectBounds() {
     kernel = cv.Mat.ones(3, 3, cv.CV_8U);
     // проход 1: нормальные пороги
     let r = scanQuads(cv, edges, kernel, blur, lo, hi, fr);
+    console.log('[detect]', {
+    bestScore: r.best ? r.best.score.toFixed(0) : null,
+    bestArea: r.best ? (r.best.areaFrac * 100).toFixed(0) + '%' : null,
+    sawFill: r.sawFill,
+    med, lo, hi
+  });
     // проход 2: низкий контраст (светлая картина на светлой стене)
     if (!r.best && !r.sawFill) {
       r = scanQuads(cv, edges, kernel, blur,
