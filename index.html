@@ -751,16 +751,13 @@ function boxNearFrameEdges(b) {
 // переход «картина на весь кадр»: поиск рамки ПРЕКРАЩАЕТСЯ, дальше — только фичи
 function transitionToFills(fullFrame) {
   fillHits = 0;
-  // Если рамка уже была зафиксирована и почти совпадает с кадром — сохраняем её:
-  // она точнее, чем искусственный fullFrame. Иначе — берём весь кадр.
   const reuse =
-    !fullFrame && paintBox &&
-    (paintBox.areaFrac >= FILL_AREA || boxNearFrameEdges(paintBox));
+    !fullFrame && paintBox && paintBox.areaFrac >= 0.75;
   if (!reuse) {
     paintBox = { fx: 0, fy: 0, fw: 1, fh: 1, areaFrac: 1 };
   }
-  boundaryPhase = false;    // больше не ищем жёлтую рамку в этой сессии
-  boundaryVisible = false;  // жёлтая рамка скрывается (п.3)
+  boundaryPhase = false;
+  boundaryVisible = false;
   paintFillsFrame = true;
 }
 
