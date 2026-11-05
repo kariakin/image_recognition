@@ -7,14 +7,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
   <title>Art Inspector — защита и проверка</title>
   <style>
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
 
-    html,
-    body {
+    html, body {
       height: 100%;
       background: #000;
       color: #fff;
@@ -44,12 +39,7 @@
       padding: 24px;
     }
 
-    #home h1 {
-      font-size: 22px;
-      font-weight: 600;
-      margin-bottom: 8px;
-      text-align: center;
-    }
+    #home h1 { font-size: 22px; font-weight: 600; margin-bottom: 8px; text-align: center; }
 
     #home .big {
       width: 80%;
@@ -62,21 +52,10 @@
       transition: opacity 0.3s, transform 0.3s;
     }
 
-    #home .big:disabled {
-      opacity: 0.3;
-      transform: scale(0.95);
-      cursor: not-allowed;
-    }
+    #home .big:disabled { opacity: 0.3; transform: scale(0.95); cursor: not-allowed; }
 
-    #btnProtect {
-      background: #0a84ff;
-      color: #fff;
-    }
-
-    #btnVerify {
-      background: #30d158;
-      color: #000;
-    }
+    #btnProtect { background: #0a84ff; color: #fff; }
+    #btnVerify { background: #30d158; color: #000; }
 
     #loadingOverlay {
       position: absolute;
@@ -91,18 +70,8 @@
       padding: 24px;
     }
 
-    #loadingTitle {
-      font-size: 28px;
-      font-weight: 700;
-      text-align: center;
-      color: #fff;
-    }
-
-    #loadingSubtitle {
-      font-size: 16px;
-      color: #aaa;
-      text-align: center;
-    }
+    #loadingTitle { font-size: 28px; font-weight: 700; text-align: center; color: #fff; }
+    #loadingSubtitle { font-size: 16px; color: #aaa; text-align: center; }
 
     #progressContainer {
       width: 80%;
@@ -127,21 +96,11 @@
     }
 
     @keyframes indeterminate {
-      0% {
-        transform: translateX(-100%);
-      }
-
-      100% {
-        transform: translateX(400%);
-      }
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(400%); }
     }
 
-    #progressInfo {
-      font-size: 14px;
-      color: #888;
-      text-align: center;
-      min-height: 20px;
-    }
+    #progressInfo { font-size: 14px; color: #888; text-align: center; min-height: 20px; }
 
     #camera {
       position: absolute;
@@ -182,13 +141,9 @@
       pointer-events: none;
     }
 
-    #objectBox {
-      border: 3px dashed #ffd60a;
-    }
+    #objectBox { border: 3px dashed #ffd60a; }
 
-    #entropyBox {
-      border: 3px solid #00ff66;
-    }
+    #entropyBox { border: 3px solid #00ff66; }
 
     #entropyBox .ch {
       position: absolute;
@@ -210,14 +165,8 @@
       transform: translate(-50%, -50%);
     }
 
-    #entropyBox.target {
-      border-color: #ffd60a;
-    }
-
-    #entropyBox.target .ch,
-    #entropyBox.target .cv {
-      background: #ffd60a;
-    }
+    #entropyBox.target { border-color: #ffd60a; }
+    #entropyBox.target .ch, #entropyBox.target .cv { background: #ffd60a; }
 
     #hint {
       position: absolute;
@@ -266,17 +215,9 @@
       -webkit-tap-highlight-color: transparent;
     }
 
-    button.primary {
-      background: #0a84ff;
-    }
-
-    button.danger {
-      background: #ff453a;
-    }
-
-    button:disabled {
-      opacity: 0.4;
-    }
+    button.primary { background: #0a84ff; }
+    button.danger { background: #ff453a; }
+    button:disabled { opacity: 0.4; }
 
     #modal {
       position: absolute;
@@ -298,11 +239,7 @@
       max-width: 360px;
     }
 
-    #modal h2 {
-      font-size: 18px;
-      margin-bottom: 12px;
-      text-align: center;
-    }
+    #modal h2 { font-size: 18px; margin-bottom: 12px; text-align: center; }
 
     #modal p {
       font-size: 14px;
@@ -310,6 +247,7 @@
       margin-bottom: 16px;
       text-align: center;
       color: #ccc;
+      white-space: pre-line;
     }
 
     #modal input {
@@ -323,15 +261,72 @@
       margin-bottom: 12px;
     }
 
-    #modal button {
-      width: 100%;
-      margin-top: 8px;
+    #modal button { width: 100%; margin-top: 8px; }
+
+    #buildTag {
+      position: absolute;
+      bottom: calc(10px + env(safe-area-inset-bottom));
+      left: 0;
+      right: 0;
+      text-align: center;
+      font-size: 11px;
+      color: #666;
     }
-      #modal p { white-space: pre-line; }
-    #buildTag { position: absolute; bottom: calc(10px + env(safe-area-inset-bottom));
-      left: 0; right: 0; text-align: center; font-size: 11px; color: #666; }
-    #buildTagLoading { position: absolute; bottom: calc(10px + env(safe-area-inset-bottom));
-      left: 0; right: 0; text-align: center; font-size: 11px; color: #555; }
+
+    #buildTagLoading {
+      position: absolute;
+      bottom: calc(10px + env(safe-area-inset-bottom));
+      left: 0;
+      right: 0;
+      text-align: center;
+      font-size: 11px;
+      color: #555;
+    }
+
+    /* ---------- DEBUG LOG ---------- */
+    #debugLog {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      max-height: 38vh;
+      overflow: auto;
+      background: rgba(0, 0, 0, 0.88);
+      color: #0f0;
+      font: 10px/1.3 ui-monospace, Menlo, Consolas, monospace;
+      padding: 6px 8px;
+      z-index: 9999;
+      display: none;
+      white-space: pre-wrap;
+      word-break: break-word;
+      border-top: 1px solid #333;
+      pointer-events: auto;
+    }
+
+    #debugLog.visible { display: block; }
+
+    #debugToggle {
+      position: absolute;
+      top: calc(8px + env(safe-area-inset-top));
+      right: 8px;
+      z-index: 10000;
+      width: 40px;
+      height: 40px;
+      padding: 0;
+      border-radius: 50%;
+      background: rgba(0, 0, 0, 0.6);
+      color: #0f0;
+      font-size: 16px;
+      font-weight: 700;
+      border: 1px solid #333;
+      display: none;
+    }
+
+    #debugToggle.visible { display: block; }
+
+    #debugLog .warn { color: #ffd60a; }
+    #debugLog .err { color: #ff453a; }
+    #debugLog .info { color: #0a84ff; }
   </style>
 </head>
 
@@ -382,7 +377,12 @@
         <button id="modalOk" class="primary">OK</button>
       </div>
     </div>
+
+    <!-- Debug log -->
+    <button id="debugToggle" title="Debug log">🐞</button>
+    <div id="debugLog"></div>
   </div>
+
   <script>
     (() => {
 // ==========================================================================
@@ -396,6 +396,64 @@
 const BUILD_STAMP = '02.11.2026 05:43 (Asia/Shanghai)';
 console.log('Art Inspector — сборка ' + BUILD_STAMP);
 
+// ---------- DEBUG LOG ----------
+const debugLogEl = document.getElementById('debugLog');
+const debugToggleEl = document.getElementById('debugToggle');
+const DEBUG_MAX_CHARS = 30000;
+let debugVisible = false;
+
+// Показываем кнопку debug на экране камеры и главном меню
+function setDebugToggleVisible(v) {
+  debugToggleEl.classList.toggle('visible', v);
+}
+debugToggleEl.onclick = () => {
+  debugVisible = !debugVisible;
+  debugLogEl.classList.toggle('visible', debugVisible);
+  debugToggleEl.textContent = debugVisible ? '✕' : '🐞';
+};
+
+function logLine(level, args) {
+  const ts = new Date().toISOString().slice(11, 23);
+  const text = args.map(a => {
+    if (typeof a === 'object' && a !== null) {
+      try { return JSON.stringify(a); } catch (e) { return String(a); }
+    }
+    return String(a);
+  }).join(' ');
+  const line = `[${ts}] ${level ? level + ' ' : ''}${text}`;
+  // консоль
+  if (level === 'ERR') console.error(line);
+  else if (level === 'WARN') console.warn(line);
+  else console.log(line);
+  // экран
+  if (!debugLogEl) return;
+  const span = document.createElement('div');
+  if (level === 'WARN') span.className = 'warn';
+  else if (level === 'ERR') span.className = 'err';
+  else if (level === 'INFO') span.className = 'info';
+  span.textContent = line;
+  debugLogEl.appendChild(span);
+  // обрезаем
+  while (debugLogEl.textContent.length > DEBUG_MAX_CHARS && debugLogEl.firstChild) {
+    debugLogEl.removeChild(debugLogEl.firstChild);
+  }
+  if (debugVisible) debugLogEl.scrollTop = debugLogEl.scrollHeight;
+}
+function log(...args) { logLine('', args); }
+function logWarn(...args) { logLine('WARN', args); }
+function logErr(...args) { logLine('ERR', args); }
+function logInfo(...args) { logLine('INFO', args); }
+
+// Перехватываем стандартные console.* для отображения на экране
+(function hookConsole() {
+  const origLog = console.log.bind(console);
+  const origWarn = console.warn.bind(console);
+  const origErr = console.error.bind(console);
+  console.log = (...a) => { try { logLine('', a); } catch (e) { origLog(...a); } };
+  console.warn = (...a) => { try { logLine('WARN', a); } catch (e) { origWarn(...a); } };
+  console.error = (...a) => { try { logLine('ERR', a); } catch (e) { origErr(...a); } };
+})();
+
 // ---------- DOM ----------
 const home = document.getElementById('home');
 const loadingOverlay = document.getElementById('loadingOverlay');
@@ -406,8 +464,8 @@ const progressInfo = document.getElementById('progressInfo');
 const cameraEl = document.getElementById('camera');
 const video = document.getElementById('video');
 const videoWrap = document.getElementById('videoWrap');
-const objectBox = document.getElementById('objectBox');   // жёлтая пунктирная рамка
-const entropyBox = document.getElementById('entropyBox'); // зелёный квадрат зоны
+const objectBox = document.getElementById('objectBox');
+const entropyBox = document.getElementById('entropyBox');
 const hint = document.getElementById('hint');
 const statusEl = document.getElementById('status');
 const btnProtect = document.getElementById('btnProtect');
@@ -423,67 +481,70 @@ const modalOk = document.getElementById('modalOk');
 
 // ---------- Константы алгоритма ----------
 const DB_NAME = 'art-inspector-db', STORE = 'paintings';
-const TICK_MS = 350;             // период анализа кадра
-const FRAME_W = 256;             // даунскейл для поиска границы картины
-const TRACK_W = 160;             // даунскейл для трекинга зоны
-const FILL_AREA = 0.85;          // переход «картина на весь кадр» при площади >= 85% (п.3)
-const EDGE_TOL = 0.07;           // допуск: граница картины почти у края кадра
-const FILL_HITS = 3;             // стабильных срабатываний подряд
-const DETECT_TIMEOUT_MS = 20000; // п.2: не обнаружено -> возврат назад
-const BLOCK = 28;                // блок поиска энтропии (в px кропа полотна)
-const MIN_ENTROPY = 4.6;         // бит (гистограмма 64 бина)
-const ZONE_FRAC = 0.24;          // сторона зелёного квадрата / меньшая сторона картины
-const CENTER_MARGIN = 0.16;      // отступ от краёв полотна при поиске зоны (п.3: без рамки)
+const TICK_MS = 350;
+const FRAME_W = 256;
+const TRACK_W = 160;
+const FILL_AREA = 0.85;
+const EDGE_TOL = 0.07;
+const FILL_HITS = 3;
+const DETECT_TIMEOUT_MS = 20000;
+const BLOCK = 28;
+const MIN_ENTROPY = 4.6;
+const ZONE_FRAC = 0.24;
+const CENTER_MARGIN = 0.16;
 const ZONE_STABLE_HITS = 4;
-const TRACK_SCALES = [0.85, 1.0, 1.18, 1.4];    // масштабы шаблона, узкий поиск (п.5)
-const TRACK_SCALES_WIDE = [0.7, 1.0, 1.4, 1.9]; // масштабы шаблона, широкий поиск
+const TRACK_SCALES = [0.85, 1.0, 1.18, 1.4];
+const TRACK_SCALES_WIDE = [0.7, 1.0, 1.4, 1.9];
 const TRACK_MIN_SCORE = 0.40;
-const TRACK_MIN_SCORE2 = 0.50;   // порог широкого поиска — строже, чтобы не цеплять мусор
-const ROI_PAD = 1.5;             // расширение области поиска трекинга
-const LAP_MIN = 35;              // порог резкости (дисперсия лапласиана)
-const READY_SIDE = 0.28;         // зона >= 28% ширины кадра — «можно снимать» (п.6)
-const FEATURE_MATCH = 0.78;      // порог поиска картины в базе по фичам (п.13)
-const HEIGHT_STD = 3.0;          // порог 3D-рельефа (п.8/18)
-const CORR_MATCH = 0.80;         // порог совпадения эталонного фрагмента (п.19)
-const SIMZ_MATCH = 0.55;         // порог совпадения карты высот (п.19)
-const TMPL = 96;                 // размер шаблона зоны, px
+const TRACK_MIN_SCORE2 = 0.50;
+const ROI_PAD = 1.5;
+const LAP_MIN = 35;
+const READY_SIDE = 0.28;
+const FEATURE_MATCH = 0.78;
+const HEIGHT_STD = 3.0;
+const CORR_MATCH = 0.80;
+const SIMZ_MATCH = 0.55;
+const TMPL = 96;
+// порог приближения к зоне: пока зона меньше — обновляем paintBox по краям картины
+const PAINT_FREEZE_SIDE = 0.50;
 
 // ---------- Состояние ----------
 let stream = null, videoTrack = null, torchOn = false;
-let mode = null;              // 'protect' | 'verify'
+let mode = null;
 let state = 'idle';
 let tickTimer = null, tickBusy = false, tickCount = 0;
 let rafRunning = false;
 let cvReady = false;
 
 let detectStartedAt = 0;
-let paintBox = null;          // граница картины в долях кадра {fx,fy,fw,fh,areaFrac} (EMA)
+let paintBox = null;
 let paintHits = 0, paintMisses = 0;
-let boundaryVisible = false;  // видна ли граница картины (п.3: рамка появляется/исчезает)
-let paintFillsFrame = false;  // картина заполняет кадр, граница вне кадра — это норма при приближении
-let boundaryPhase = true;     // фаза поиска рамки картины; после перехода к фичам ОТКЛЮЧАЕТСЯ навсегда
-let tmplSide = 0;             // ширина зоны (доля кадра) на момент захвата шаблона фичей
-let tmplRefreshTick = -99;    // тик последнего обновления шаблона
+let boundaryVisible = false;
+let paintFillsFrame = false;
+let boundaryPhase = true;
+let tmplSide = 0;
+let tmplRefreshTick = -99;
 let fillHits = 0;
 
-let zoneEMA = null;           // кандидат зоны в координатах полотна {cx,cy,s}
-let zoneBase = null;          // зафиксированная зона в координатах полотна
+let zoneEMA = null;
+let zoneBase = null;
 let zoneStable = 0, zoneEntropy = 0;
-let trackBox = null;          // зона в долях кадра (результат трекинга, EMA)
+let trackBox = null;
 let trackMisses = 0, lastTrackScore = 0;
-let dispBox = null;           // сглаженная рамка для отрисовки
-let tmplData = null;          // Uint8ClampedArray TMPL*TMPL, серый шаблон зоны
-let tmplMat = null;           // cv.Mat шаблона (лениво)
+let dispBox = null;
+let tmplData = null;
+let tmplMat = null;
 
-let globalFeatures = null;    // фичи полотна (п.3/12)
-let verifyBase = null;        // запись из базы (verify)
+let globalFeatures = null;
+let verifyBase = null;
 let baseSim = null;
-let shots = [];               // [{patch: ImageData96, full: ImageData<=720}]
+let shots = [];
 let targetIndex = 0;
 
 let dbPromise = null;
 
 // ---------- Рабочие canvas ----------
+// Важно: каждый grabFrame создаёт СВОЙ canvas, чтобы matchAt не читал чужой.
 const workCanvas = document.createElement('canvas');
 const workCtx = workCanvas.getContext('2d', { willReadFrequently: true });
 const cropCanvas = document.createElement('canvas');
@@ -517,7 +578,6 @@ function lerpBox(a, b, k) {
 }
 function grayOf(d, i) { return 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]; }
 
-// доля пикселей-зеркальных бликов (пересвет + низкая насыщенность)
 function specFracOf(d) {
   let c = 0, n = 0;
   for (let i = 0; i < d.length; i += 4) {
@@ -529,7 +589,6 @@ function specFracOf(d) {
   return n ? c / n : 1;
 }
 
-// контраст (std яркости) и резкость (дисперсия лапласиана) для ImageData 64x64
 function patchStats64(imgData) {
   const S = imgData.width, d = imgData.data;
   const g = new Float32Array(S * S);
@@ -549,20 +608,22 @@ function patchStats64(imgData) {
   return { lumStd, lapVar: Math.max(0, ls2 / n - lm * lm) };
 }
 
-// ---------- Кадр: даунскейл + серая шкала ----------
+// ---------- Кадр: даунскейл + серая шкала (с собственным canvas) ----------
 function grabFrame(W) {
   const vw = video.videoWidth, vh = video.videoHeight;
   const H = Math.max(1, Math.round(W * vh / vw));
-  setCanvas(workCanvas, W, H);
-  workCtx.drawImage(video, 0, 0, W, H);
-  const rgba = workCtx.getImageData(0, 0, W, H).data;
+  const cnv = document.createElement('canvas');
+  cnv.width = W; cnv.height = H;
+  const ctx = cnv.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(video, 0, 0, W, H);
+  const rgba = ctx.getImageData(0, 0, W, H).data;
   const gray = new Uint8ClampedArray(W * H);
   for (let i = 0, p = 0; i < gray.length; i++, p += 4) gray[i] = grayOf(rgba, p);
-  return { W, H, gray, rgba };
+  return { W, H, gray, rgba, canvas: cnv };
 }
 
 // ==========================================================================
-//  П.2/11 — обнаружение картины (жёлтая пунктирная рамка)
+//  П.2/11 — обнаружение картины
 // ==========================================================================
 function medianGray(gray) {
   const s = [];
@@ -570,40 +631,43 @@ function medianGray(gray) {
   s.sort((a, b) => a - b);
   return s.length ? s[s.length >> 1] : 128;
 }
+
 function detectBounds() {
   if (!cvReady || !window.cv || !video.videoWidth) return null;
   const fr = grabFrame(FRAME_W);
   const cv = window.cv;
   let src = null, gray = null, blur = null, edges = null, kernel = null;
   try {
-    src = cv.imread(workCanvas);
+    src = new cv.Mat(fr.H, fr.W, cv.CV_8UC4);
+    src.data.set(fr.rgba);
     gray = new cv.Mat();
     cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
     blur = new cv.Mat();
     cv.GaussianBlur(gray, blur, new cv.Size(5, 5), 0);
-    // адаптивные пороги Canny по медиане яркости (устойчиво к освещению)
     const med = medianGray(fr.gray);
     const lo = Math.max(20, Math.min(110, Math.round(med * 0.6)));
     const hi = Math.max(60, Math.min(220, Math.round(med * 1.6)));
     edges = new cv.Mat();
     kernel = cv.Mat.ones(3, 3, cv.CV_8U);
-    // проход 1: нормальные пороги
     let r = scanQuads(cv, edges, kernel, blur, lo, hi, fr);
-    console.log('[detect]', {
-    bestScore: r.best ? r.best.score.toFixed(0) : null,
-    bestArea: r.best ? (r.best.areaFrac * 100).toFixed(0) + '%' : null,
-    sawFill: r.sawFill,
-    med, lo, hi
-  });
-    // проход 2: низкий контраст (светлая картина на светлой стене)
     if (!r.best && !r.sawFill) {
       r = scanQuads(cv, edges, kernel, blur,
         Math.max(8, Math.round(lo * 0.45)), Math.max(28, Math.round(hi * 0.45)), fr);
     }
-    if (!r.best && r.sawFill) return { fills: true }; // картина заполняет кадр
+    // диагностика (раз в ~2 сек, чтобы не спамить)
+    if (tickCount % 6 === 0) {
+      logInfo('detect', {
+        med,
+        lo, hi,
+        bestScore: r.best ? Math.round(r.best.score) : null,
+        bestArea: r.best ? +(r.best.areaFrac * 100).toFixed(1) : null,
+        sawFill: r.sawFill
+      });
+    }
+    if (!r.best && r.sawFill) return { fills: true };
     return r.best;
   } catch (e) {
-    console.warn('detectBounds:', e);
+    console.warn('detectBounds:', e.message || e);
     return null;
   } finally {
     try {
@@ -622,7 +686,7 @@ function scanQuads(cv, edges, kernel, blur, lo, hi, fr) {
     cv.Canny(blur, edges, lo, hi);
     cv.dilate(edges, edges, kernel);
     cv.dilate(edges, edges, kernel);
-    cv.erode(edges, edges, kernel); // замыкание разрывов границы
+    cv.erode(edges, edges, kernel);
     contours = new cv.MatVector();
     hierarchy = new cv.Mat();
     cv.findContours(edges, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
@@ -634,9 +698,7 @@ function scanQuads(cv, edges, kernel, blur, lo, hi, fr) {
       try {
         const area = cv.contourArea(cnt);
         if (area < imgArea * 0.05) continue;
-        // контур, занимающий почти весь кадр, вообще не может быть валидной рамкой
-        // (если он не обрезан — тогда да, это fill; если обрезан — площадь занижена,
-        //  и такой контур мы ниже отдельно пометим как sawFill)
+
         const peri = cv.arcLength(cnt, true);
         approx = new cv.Mat();
         cv.approxPolyDP(cnt, approx, 0.045 * peri, true);
@@ -675,9 +737,8 @@ function scanQuads(cv, edges, kernel, blur, lo, hi, fr) {
           };
         }
 
-        // Дополнительно: если этот валидный контур занимает >=60% кадра и
-        // упирается в >=2 края — это признак "картина заполняет кадр".
-        // НО: только если bbox действительно большой и контур почти в края.
+        // Признак "картина заполняет кадр": валидный контур, большой bbox,
+        // упирается в ≥2 края кадра. НЕ отбрасываем контур — только помечаем.
         const touchesEdges =
           (minX <= fr.W * 0.01 ? 1 : 0) + (minY <= fr.H * 0.01 ? 1 : 0) +
           (maxX >= fr.W * 0.99 ? 1 : 0) + (maxY >= fr.H * 0.99 ? 1 : 0);
@@ -699,7 +760,6 @@ function scanQuads(cv, edges, kernel, blur, lo, hi, fr) {
   }
 }
 
-// картина, скорее всего, заполняет кадр: большая площадь ИЛИ упирается в 2+ края кадра
 function looksLikeFills() {
   if (!paintBox) return false;
   if (paintBox.areaFrac >= 0.60) return true;
@@ -709,12 +769,10 @@ function looksLikeFills() {
   return touches >= 2 && b.areaFrac >= 0.40;
 }
 
-// гистерезис: рамка показывается после 2 попаданий, скрывается после 3 промахов (п.3)
 function updateBoundary() {
-  if (!boundaryPhase) return null; // поиск рамки прекращён — работаем только по фичам
+  if (!boundaryPhase) return null;
   const det = detectBounds();
   if (det && det.fills) {
-    // картина заполняет кадр: границ не видно — при приближении это норма (п.3)
     paintHits = 0; paintMisses = 0;
     boundaryVisible = false;
     paintFillsFrame = true;
@@ -722,7 +780,6 @@ function updateBoundary() {
     return det;
   }
   if (det) {
-    // защита от ложных контуров при приближении: площадь не должна резко «схлопываться»
     if (paintBox && paintBox.areaFrac >= 0.30 && det.areaFrac < paintBox.areaFrac * 0.55 && paintMisses < 6) {
       paintMisses++; paintHits = 0;
       if (paintMisses >= 4) boundaryVisible = false;
@@ -735,11 +792,9 @@ function updateBoundary() {
       paintFillsFrame = false;
       detectStartedAt = Date.now();
     }
-   } else {
+  } else {
     paintMisses++; paintHits = 0;
     if (paintMisses >= 4) boundaryVisible = false;
-    // Граница пропала, но paintBox уже был зафиксирован крупным (>=75% кадра) —
-    // значит картина реально ушла за края кадра, а не потерялась.
     if (paintBox && paintMisses >= 2 && paintBox.areaFrac >= 0.75) {
       return { fills: true };
     }
@@ -747,1445 +802,30 @@ function updateBoundary() {
   return det;
 }
 
-// граница ушла за кадр при приближении: считаем, что картина = весь кадр
 function boxNearFrameEdges(b) {
-  // границы картины почти совпадают с границами кадра
   return b.fx <= EDGE_TOL && b.fy <= EDGE_TOL &&
     (b.fx + b.fw) >= 1 - EDGE_TOL && (b.fy + b.fh) >= 1 - EDGE_TOL;
 }
 
-// переход «картина на весь кадр»: поиск рамки ПРЕКРАЩАЕТСЯ, дальше — только фичи
 function transitionToFills(fullFrame) {
   fillHits = 0;
-  const reuse =
-    !fullFrame && paintBox && paintBox.areaFrac >= 0.75;
+  const reuse = !fullFrame && paintBox && paintBox.areaFrac >= 0.75;
   if (!reuse) {
     paintBox = { fx: 0, fy: 0, fw: 1, fh: 1, areaFrac: 1 };
   }
-  boundaryPhase = false;
+  // boundaryPhase = false ставим НЕ здесь, а когда пользователь уже приблизился
+  // (см. tickLocked / tickShoot). Пока зона маленькая — продолжаем трекать края,
+  // чтобы paintBox оставался актуальным и зона «не плыла» вместе с камерой.
   boundaryVisible = false;
   paintFillsFrame = true;
 }
 
 // ==========================================================================
-//  П.3/12 — фичи полотна для поиска в базе и позиционирования
+//  П.3/12 — фичи полотна
 // ==========================================================================
 function computeGlobalFeatures() {
   const vw = video.videoWidth, vh = video.videoHeight;
   const W = 320, H = Math.max(1, Math.round(320 * vh / vw));
   setCanvas(cropCanvas, W, H);
   cropCtx.drawImage(video, 0, 0, W, H);
-  // кроп по границе картины — фичи считаются только по полотну
-  let sx = 0, sy = 0, sw = W, sh = H;
-  if (paintBox) {
-    sx = Math.max(0, Math.min(W - 8, Math.round(paintBox.fx * W)));
-    sy = Math.max(0, Math.min(H - 8, Math.round(paintBox.fy * H)));
-    sw = Math.max(8, Math.min(W - sx, Math.round(paintBox.fw * W)));
-    sh = Math.max(8, Math.min(H - sy, Math.round(paintBox.fh * H)));
-  }
-  const S = 128;
-  setCanvas(tmpCanvas, S, S);
-  tmpCtx.drawImage(cropCanvas, sx, sy, sw, sh, 0, 0, S, S);
-  const d = tmpCtx.getImageData(0, 0, S, S).data;
-  const G = 8, cw = S / G;
-  const out = new Float32Array(G * G * 4 + 72);
-  // 8x8: средние R,G,B + контраст в ячейке
-  for (let gy = 0; gy < G; gy++) for (let gx = 0; gx < G; gx++) {
-    let r = 0, g = 0, b = 0, lsum = 0, l2 = 0, n = 0;
-    for (let y = gy * cw; y < (gy + 1) * cw; y++)
-      for (let x = gx * cw; x < (gx + 1) * cw; x++) {
-        const i = (y * S + x) * 4;
-        r += d[i]; g += d[i + 1]; b += d[i + 2];
-        const l = grayOf(d, i);
-        lsum += l; l2 += l * l; n++;
-      }
-    const o = (gy * G + gx) * 4;
-    out[o] = r / n / 255;
-    out[o + 1] = g / n / 255;
-    out[o + 2] = b / n / 255;
-    const m = lsum / n;
-    out[o + 3] = Math.sqrt(Math.max(0, l2 / n - m * m)) / 128;
-  }
-  // гистограммы R,G,B по 24 бина
-  const hR = new Float32Array(24), hG = new Float32Array(24), hB = new Float32Array(24);
-  for (let i = 0; i < d.length; i += 4) {
-    hR[Math.min(23, (d[i] * 24 / 256) | 0)]++;
-    hG[Math.min(23, (d[i + 1] * 24 / 256) | 0)]++;
-    hB[Math.min(23, (d[i + 2] * 24 / 256) | 0)]++;
-  }
-  const tot = S * S;
-  for (let i = 0; i < 24; i++) {
-    out[256 + i] = hR[i] / tot;
-    out[256 + 24 + i] = hG[i] / tot;
-    out[256 + 48 + i] = hB[i] / tot;
-  }
-  return normalizeL2(out);
-}
-
-// фичи зелёной зоны (дескриптор для базы, п.3/10)
-function zoneDescriptor(img256) {
-  const d = img256.data, S = img256.width, G = 4, B = 16, cw = S / G;
-  const out = new Float32Array(G * G * B + 5);
-  for (let gy = 0; gy < G; gy++) for (let gx = 0; gx < G; gx++) {
-    const hist = new Float32Array(B);
-    let n = 0;
-    for (let y = gy * cw; y < (gy + 1) * cw; y++)
-      for (let x = gx * cw; x < (gx + 1) * cw; x++) {
-        const l = Math.min(255, grayOf(d, (y * S + x) * 4) | 0);
-        hist[Math.min(B - 1, (l * B / 256) | 0)]++;
-        n++;
-      }
-    for (let k = 0; k < B; k++) out[(gy * G + gx) * B + k] = hist[k] / n;
-  }
-  let sum = 0, sum2 = 0, r = 0, g = 0, b = 0, n2 = 0;
-  for (let i = 0; i < d.length; i += 4) {
-    const l = grayOf(d, i);
-    sum += l; sum2 += l * l; r += d[i]; g += d[i + 1]; b += d[i + 2]; n2++;
-  }
-  const m = sum / n2, o = G * G * B;
-  out[o] = m / 255;
-  out[o + 1] = Math.sqrt(Math.max(0, sum2 / n2 - m * m)) / 128;
-  out[o + 2] = r / n2 / 255; out[o + 3] = g / n2 / 255; out[o + 4] = b / n2 / 255;
-  return normalizeL2(out);
-}
-
-// ==========================================================================
-//  П.3/4 — поиск области максимальной энтропии ближе к центру полотна
-// ==========================================================================
-function searchZone() {
-  if (!paintBox || !video.videoWidth) return null;
-  const fr = grabFrame(FRAME_W);
-  const sx = Math.max(0, Math.round(paintBox.fx * fr.W));
-  const sy = Math.max(0, Math.round(paintBox.fy * fr.H));
-  const sw = Math.min(fr.W - sx, Math.max(8, Math.round(paintBox.fw * fr.W)));
-  const sh = Math.min(fr.H - sy, Math.max(8, Math.round(paintBox.fh * fr.H)));
-  const PW = 224, PH = Math.max(24, Math.round(PW * sh / sw));
-  setCanvas(cropCanvas, PW, PH);
-  cropCtx.drawImage(workCanvas, sx, sy, sw, sh, 0, 0, PW, PH);
-  const d = cropCtx.getImageData(0, 0, PW, PH).data;
-  const cols = Math.floor(PW / BLOCK), rows = Math.floor(PH / BLOCK);
-  const margin = (cols < 4 || rows < 4) ? 0.05 : CENTER_MARGIN;
-  let best = null;
-  for (let by = 0; by < rows; by++) for (let bx = 0; bx < cols; bx++) {
-    const cx = (bx + 0.5) * BLOCK / PW, cy = (by + 0.5) * BLOCK / PH;
-    if (cx < margin || cx > 1 - margin || cy < margin || cy > 1 - margin) continue;
-    const hist = new Float64Array(64);
-    let n = 0;
-    for (let y = by * BLOCK; y < (by + 1) * BLOCK; y++)
-      for (let x = bx * BLOCK; x < (bx + 1) * BLOCK; x++) {
-        const l = grayOf(d, (y * PW + x) * 4) | 0;
-        hist[Math.min(63, l >> 2)]++; n++;
-      }
-    let H = 0;
-    for (let k = 0; k < 64; k++) if (hist[k]) { const p = hist[k] / n; H -= p * Math.log2(p); }
-    const dist = Math.hypot(cx - 0.5, cy - 0.5) / 0.7071;
-    const w = 0.75 + 0.25 * Math.exp(-(dist * dist) / (2 * 0.4 * 0.4)); // мягкий приоритет центра
-    const score = H * w;
-    if (!best || score > best.score) best = { cx, cy, H, score };
-  }
-  if (!best) return null;
-  return { cx: best.cx, cy: best.cy, s: ZONE_FRAC, H: best.H };
-}
-
-// зона (квадрат на поверхности картины) <-> рамка в долях видеокадра
-function zoneToFrameFrac(zc) {
-  const pb = paintBox || { fx: 0, fy: 0, fw: 1, fh: 1 };
-  const vw = video.videoWidth || 1, vh = video.videoHeight || 1;
-  const paintW = pb.fw * vw, paintH = pb.fh * vh;
-  const m = Math.min(paintW, paintH);
-  const side = zc.s * m;
-  const cxPx = pb.fx * vw + zc.cx * paintW;
-  const cyPx = pb.fy * vh + zc.cy * paintH;
-  return {
-    fx: (cxPx - side / 2) / vw, fy: (cyPx - side / 2) / vh,
-    fw: side / vw, fh: side / vh
-  };
-}
-
-
-// ==========================================================================
-//  П.5/15 — трекинг зелёной зоны: шаблон + многомерный matchTemplate
-// ==========================================================================
-function captureTemplate(tb) {
-  const vw = video.videoWidth, vh = video.videoHeight;
-  const x = Math.max(0, Math.min(vw - 8, Math.round(tb.fx * vw)));
-  const y = Math.max(0, Math.min(vh - 8, Math.round(tb.fy * vh)));
-  const w = Math.min(vw - x, Math.max(8, Math.round(tb.fw * vw)));
-  const h = Math.min(vh - y, Math.max(8, Math.round(tb.fh * vh)));
-  setCanvas(tmpCanvas, TMPL, TMPL);
-  tmpCtx.drawImage(video, x, y, w, h, 0, 0, TMPL, TMPL);
-  const d = tmpCtx.getImageData(0, 0, TMPL, TMPL).data;
-  tmplData = new Uint8ClampedArray(TMPL * TMPL);
-  for (let i = 0, p = 0; i < tmplData.length; i++, p += 4) tmplData[i] = grayOf(d, p);
-  if (tmplMat) { try { tmplMat.delete(); } catch (e) {} tmplMat = null; }
-  tmplSide = tb.fw;
-  tmplRefreshTick = tickCount;
-}
-function tmplToMat(cv) {
-  if (!tmplMat && tmplData) {
-    tmplMat = new cv.Mat(TMPL, TMPL, cv.CV_8U);
-    tmplMat.data.set(tmplData);
-  }
-  return tmplMat;
-}
-function trackZoneStep() {
-  if (!cvReady || !window.cv || !tmplData || !video.videoWidth) return false;
-  const cv = window.cv;
-  const fr = grabFrame(TRACK_W);
-  let pred = trackBox;
-  if (!pred && zoneBase) pred = zoneToFrameFrac(zoneBase);
-  if (!pred) return false;
-  // уровень 1: рядом с последней позицией
-  let r = matchAt(cv, fr, pred, ROI_PAD, TRACK_SCALES, TRACK_MIN_SCORE);
-  let score = r.score;
-  if (!r.ok) {
-    // уровень 2: расширенная область вокруг последней позиции
-    const r2 = matchAt(cv, fr, pred, ROI_PAD * 2.4, TRACK_SCALES_WIDE, TRACK_MIN_SCORE2);
-    score = Math.max(score, r2.score);
-    if (r2.ok) r = r2;
-  }
-  if (!r.ok && trackMisses >= 3 && tickCount % 4 === 0) {
-    // уровень 3: глобальный поиск зоны по всему кадру (пере-захват по фичам)
-    const sw = trackBox ? Math.max(trackBox.fw, trackBox.fh) : 0.3;
-    const predFull = { fx: 0.5 - sw / 2, fy: 0.5 - sw / 2, fw: sw, fh: sw };
-    const r3 = matchAt(cv, fr, predFull, 4.0, TRACK_SCALES_WIDE, TRACK_MIN_SCORE2);
-    score = Math.max(score, r3.score);
-    if (r3.ok) r = r3;
-  }
-  lastTrackScore = score;
-  if (r.ok) {
-    trackBox = trackBox ? emaBox(trackBox, r.box, 0.5) : r.box;
-    trackMisses = 0;
-    return true;
-  }
-  trackMisses++;
-  return false;
-}
-
-// совпадение фичей шаблона в заданной области кадра (NCC matchTemplate)
-function matchAt(cv, fr, pred, pad, scales, minScore) {
-  const cx = (pred.fx + pred.fw / 2) * fr.W, cy = (pred.fy + pred.fh / 2) * fr.H;
-  const side = Math.max(pred.fw * fr.W, pred.fh * fr.H);
-  const roiHalf = Math.max(side * pad, 24);
-  const rx = Math.max(0, Math.round(cx - roiHalf));
-  const ry = Math.max(0, Math.round(cy - roiHalf));
-  const rw = Math.min(Math.round(roiHalf * 2), fr.W - rx);
-  const rh = Math.min(Math.round(roiHalf * 2), fr.H - ry);
-  if (rw < 24 || rh < 24) return { ok: false, score: 0, box: null };
-  let src = null, gray = null, gblur = null, roi = null, res = null, tS = null, tB = null;
-  try {
-    src = cv.imread(workCanvas);
-    gray = new cv.Mat();
-    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-    gblur = new cv.Mat();
-    cv.GaussianBlur(gray, gblur, new cv.Size(3, 3), 0);
-    roi = new cv.Mat(gblur, new cv.Rect(rx, ry, rw, rh));
-    const tBase = tmplToMat(cv);
-    if (!tBase) return { ok: false, score: 0, box: null };
-    let best = null;
-    for (const sc of scales) {
-      const ts2 = Math.round(side * sc);
-      if (ts2 < 14 || ts2 >= rw - 2 || ts2 >= rh - 2) continue;
-      tS = new cv.Mat();
-      cv.resize(tBase, tS, new cv.Size(ts2, ts2), 0, 0, cv.INTER_LINEAR);
-      tB = new cv.Mat();
-      cv.GaussianBlur(tS, tB, new cv.Size(3, 3), 0);
-      res = new cv.Mat();
-      cv.matchTemplate(roi, tB, res, cv.TM_CCOEFF_NORMED);
-      const mm = cv.minMaxLoc(res);
-      tB.delete(); tB = null;
-      tS.delete(); tS = null;
-      res.delete(); res = null;
-      if (isFinite(mm.maxVal) && (!best || mm.maxVal > best.score)) {
-        best = { score: mm.maxVal, x: mm.maxLoc.x, y: mm.maxLoc.y, t: ts2 };
-      }
-    }
-    if (!best) return { ok: false, score: 0, box: null };
-    const box = {
-      fx: (rx + best.x) / fr.W, fy: (ry + best.y) / fr.H,
-      fw: best.t / fr.W, fh: best.t / fr.H
-    };
-    return { ok: best.score >= minScore, score: best.score, box };
-  } catch (e) {
-    console.warn('matchAt:', e);
-    return { ok: false, score: 0, box: null };
-  } finally {
-    try {
-      if (res) res.delete();
-      if (tB) tB.delete();
-      if (tS) tS.delete();
-      if (roi) roi.delete();
-      if (gblur) gblur.delete();
-      if (gray) gray.delete();
-      if (src) src.delete();
-    } catch (e) {}
-  }
-}
-
-// резкость зоны (п.6: «с сохранением резкости»)
-function zoneSharp() {
-  if (!trackBox || !video.videoWidth) return null;
-  const vw = video.videoWidth, vh = video.videoHeight;
-  const x = Math.max(0, Math.min(vw - 8, Math.round(trackBox.fx * vw)));
-  const y = Math.max(0, Math.min(vh - 8, Math.round(trackBox.fy * vh)));
-  const w = Math.min(vw - x, Math.max(8, Math.round(trackBox.fw * vw)));
-  const h = Math.min(vh - y, Math.max(8, Math.round(trackBox.fh * vh)));
-  setCanvas(tmpCanvas, 64, 64);
-  tmpCtx.drawImage(video, x, y, w, h, 0, 0, 64, 64);
-  const img = tmpCtx.getImageData(0, 0, 64, 64);
-  const st = patchStats64(img);
-  return { lapVar: st.lapVar, sideFrac: trackBox.fw };
-}
-
-// ==========================================================================
-//  Отрисовка рамок
-// ==========================================================================
-function renderBoxes() {
-  const g = computeGeometry();
-  if (!g) return;
-  // жёлтая пунктирная — только когда граница картины реально видна в кадре (п.3)
-  if (boundaryVisible && paintBox && state !== 'idle') {
-    objectBox.style.display = 'block';
-    objectBox.style.left = (g.offX + paintBox.fx * g.drawW) + 'px';
-    objectBox.style.top = (g.offY + paintBox.fy * g.drawH) + 'px';
-    objectBox.style.width = (paintBox.fw * g.drawW) + 'px';
-    objectBox.style.height = (paintBox.fh * g.drawH) + 'px';
-  } else {
-    objectBox.style.display = 'none';
-  }
-  // зелёный квадрат зоны (п.4/5) — по трекингу, плавно
-  const showZone = (state === 'locked' || state === 'shoot' || state === 'process') && trackBox;
-  if (showZone) {
-    dispBox = dispBox ? lerpBox(dispBox, trackBox, 0.28) : Object.assign({}, trackBox);
-    entropyBox.style.display = 'block';
-    entropyBox.style.left = (g.offX + dispBox.fx * g.drawW) + 'px';
-    entropyBox.style.top = (g.offY + dispBox.fy * g.drawH) + 'px';
-    entropyBox.style.width = (dispBox.fw * g.drawW) + 'px';
-    entropyBox.style.height = (dispBox.fh * g.drawH) + 'px';
-  } else {
-    entropyBox.style.display = 'none';
-    dispBox = null;
-  }
-}
-function startRenderLoop() {
-  if (rafRunning) return;
-  rafRunning = true;
-  const loop = () => { renderBoxes(); requestAnimationFrame(loop); };
-  requestAnimationFrame(loop);
-}
-
-// ==========================================================================
-//  Машина состояний (тик анализа)
-// ==========================================================================
-function startTicks() { stopTicks(); tickTimer = setInterval(onTick, TICK_MS); }
-function stopTicks() { if (tickTimer) { clearInterval(tickTimer); tickTimer = null; } }
-
-async function onTick() {
-  if (tickBusy || state === 'idle') return;
-  if (!video.videoWidth || video.readyState < 2) return;
-  tickBusy = true; tickCount++;
-  try {
-    if (state === 'detect') tickDetect();
-    else if (state === 'zone_search') tickZoneSearch();
-    else if (state === 'locked') tickLocked();
-    else if (state === 'shoot') tickShoot();
-  } catch (e) {
-    console.warn('tick:', e);
-  } finally {
-    tickBusy = false;
-  }
-}
-function tickDetect() {
-  const det = updateBoundary();
-
-  // Сигнал "картина заполняет кадр" (в т.ч. при потере обрезанной границы)
-  if (det && det.fills) {
-    fillHits++;
-    setHint('Картина на весь кадр. Держите камеру неподвижно…');
-    setStatus('Картина заполняет кадр');
-    detectStartedAt = Date.now(); // живой сигнал — не даём таймауту сработать
-    if (fillHits >= FILL_HITS) { transitionToFills(true); onPaintingFilled(); }
-    return;
-  }
-
-  // Граница видна: показываем прогресс и ждём заполнения кадра
-  if (boundaryVisible && paintBox) {
-    detectStartedAt = Date.now();
-    const nearEdges = boxNearFrameEdges(paintBox);
-    setHint(nearEdges
-      ? 'Картина почти на весь кадр — держите камеру неподвижно…'
-      : 'Картина обнаружена. Приближайтесь, пока она не займёт весь кадр.');
-    setStatus(`Граница: ${Math.round(paintBox.areaFrac * 100)}% кадра · нужно ≥ ${Math.round(FILL_AREA * 100)}% или рамка у краёв кадра`);
-    if (paintBox.areaFrac >= FILL_AREA || nearEdges) {
-      fillHits++;
-      if (fillHits >= FILL_HITS) { transitionToFills(false); onPaintingFilled(); }
-    } else fillHits = 0;
-    return;
-  }
-
-  // Граница не видна. Переход к работе по фичам только если картина
-  // уже была зафиксирована крупной (>=85% кадра) и мы теряем её стабильно.
-  const lostButFilled =
-    paintBox && paintBox.areaFrac >= 0.85 && paintMisses >= 3;
-  if (lostButFilled) {
-    transitionToFills(true);
-    onPaintingFilled();
-    return;
-  }
-
-  fillHits = 0;
-  setHint('Наведите камеру на картину — ищем прямоугольный объект…');
-  const left = Math.max(0, Math.ceil((DETECT_TIMEOUT_MS - (Date.now() - detectStartedAt)) / 1000));
-  setStatus(`Картина не обнаружена… осталось ${left} с до возврата`);
-  if (Date.now() - detectStartedAt > DETECT_TIMEOUT_MS) {
-    stopTicks(); // п.2: объект не обнаружен — возврат назад
-    showModal('Картина не обнаружена',
-      'Прямоугольная картина не найдена в кадре. Возврат в главное меню.')
-      .then(() => goHome());
-  }
-}
-
-function onPaintingFilled() {
-  fillHits = 0;
-  globalFeatures = computeGlobalFeatures(); // п.3/12: фичи полотна
-  if (mode === 'protect') {
-    state = 'zone_search';
-    zoneEMA = null; zoneStable = 0;
-    syncShotBtn();
-    setHint('Ищем самую информативную (текстурную) зону ближе к центру полотна…');
-    setStatus('');
-  } else {
-    state = 'lookup';
-    syncShotBtn();
-    handleVerifyLookup().catch(async e => {
-      console.error('lookup error:', e);
-      await showModal('Ошибка', 'Сбой поиска в базе: ' + e.message);
-      goHome();
-    });
-  }
-}
-function tickZoneSearch() {
-  // поиск рамки картины ПРЕКРАЩЁН — зона ищется по зафиксированному paintBox
-  const z = searchZone();
-  if (z && z.H >= MIN_ENTROPY) {
-    zoneEMA = zoneEMA
-      ? { cx: zoneEMA.cx * 0.75 + z.cx * 0.25, cy: zoneEMA.cy * 0.75 + z.cy * 0.25, s: z.s }
-      : z;
-    zoneStable++;
-    zoneEntropy = z.H;
-    setStatus(`Энтропия зоны: ${z.H.toFixed(2)} бит · стабильность ${zoneStable}/${ZONE_STABLE_HITS}`);
-    if (zoneStable >= ZONE_STABLE_HITS) lockZone();
-  } else {
-    zoneStable = 0;
-    setHint('Картина на весь кадр — ищу текстурную зону ближе к центру…');
-    setStatus(z ? `Лучшая энтропия ${z.H.toFixed(2)} бит — нужно ≥ ${MIN_ENTROPY}` : 'Кандидат не найден');
-  }
-}
-
-// п.4: зона найдена -> зелёный квадрат, просим приблизиться
-function lockZone() {
-  zoneBase = { cx: zoneEMA.cx, cy: zoneEMA.cy, s: zoneEMA.s };
-  trackBox = zoneToFrameFrac(zoneBase);
-  captureTemplate(trackBox); // шаблон для трекинга (п.5)
-  state = 'locked';
-  trackMisses = 0; lastTrackScore = 0;
-  syncShotBtn();
-  setHint('Зона найдена! Приблизьтесь к зелёному квадрату, держите резкость — затем нажмите «Фото».');
-}
-function tickLocked() {
-  // п.5/15: зелёная зона позиционируется ИСКЛЮЧИТЕЛЬНО по совпадению фичей
-  const ok = trackZoneStep();
-  if (ok) maybeRefreshTemplate();
-  const sh = zoneSharp();
-  const ready = sh && sh.lapVar >= LAP_MIN && sh.sideFrac >= READY_SIDE;
-  if (trackMisses > 5) {
-    setHint(trackBox && trackBox.fw > 0.85
-      ? 'Слишком близко — зона больше кадра. Немного отведите камеру назад.'
-      : 'Зона потеряна. Нажмите «Отмена» и начните заново, показав картину целиком.');
-  } else if (ready) {
-    setHint(mode === 'protect'
-      ? 'Резкость в норме — нажмите «Фото»: потребуется 5 снимков с небольшими сдвигами.'
-      : `«${verifyBase.name}». Резкость в норме — нажмите «Фото»: потребуется 5 снимков.`);
-  } else {
-    setHint(sh && sh.lapVar < LAP_MIN
-      ? 'Держите камеру неподвижно / приблизьтесь — нужна резкость.'
-      : 'Приблизьтесь к зелёной зоне…');
-  }
-  const parts = [];
-  if (mode === 'verify' && baseSim != null) parts.push(`сходство ${(baseSim * 100).toFixed(0)}%`);
-  if (zoneEntropy) parts.push(`энтропия ${zoneEntropy.toFixed(2)}`);
-  parts.push(`фичи ${Math.round(lastTrackScore * 100)}%`);
-  if (sh) parts.push(`резкость ${sh.lapVar.toFixed(0)}${ready ? ' ✓' : ''}`);
-  setStatus(parts.join(' · '));
-}
-
-function maybeRefreshTemplate() {
-  // при приближении обновляем шаблон фичей на более крупный и резкий
-  if (lastTrackScore >= 0.55 && tmplSide > 0 && trackBox &&
-      trackBox.fw > tmplSide * 1.6 && tickCount - tmplRefreshTick >= 8) {
-    captureTemplate(trackBox);
-  }
-}
-function tickShoot() {
-  // во время серии трекинг по фичам продолжается — квадрат остаётся на зоне (п.6)
-  if (tickCount % 2 === 0) {
-    const ok = trackZoneStep();
-    if (ok) maybeRefreshTemplate();
-  }
-}
-
-// ==========================================================================
-//  П.11-15 — поиск картины в базе (режим «Проверка»)
-// ==========================================================================
-async function handleVerifyLookup() {
-  setHint('Ищем картину в базе…');
-  setStatus('');
-  let list = [];
-  try { list = await dbAll(); } catch (e) { list = []; }
-  if (!list.length) {
-    await showModal('Не найдено', 'В базе нет защищённых картин. Сначала выполните защиту.');
-    goHome();
-    return;
-  }
-  // п.13: поиск по фичам полотна
-  let best = null, bestSim = -1;
-  for (const rec of list) {
-    const sim = cosine(globalFeatures, rec.globalFeatures);
-    if (sim > bestSim) { bestSim = sim; best = rec; }
-  }
-  let rec = null;
-  if (bestSim >= FEATURE_MATCH) {
-    rec = best;
-  } else {
-    // не найдено по изображению — спрашиваем название
-    const name = await showModal('Уточните название',
-      `Автоматически картина не распознана (лучшее сходство ${(bestSim * 100).toFixed(0)}%). Введите название картины:`,
-      { input: true, okText: 'Найти' });
-    if (name) {
-      const nl = name.toLowerCase();
-      rec = list.find(r => r.name && r.name.toLowerCase().includes(nl)) || null;
-    }
-    if (!rec) {
-      await showModal('Не найдено',
-        'Картина не найдена ни по изображению, ни по названию. Возврат в главное меню.');
-      goHome();
-      return;
-    }
-  }
-  const zc = rec.zoneCoords;
-  if (!zc || typeof zc.cx !== 'number' || !rec.reference || !rec.heightMap) {
-    await showModal('Ошибка', 'Запись старого формата или повреждена. Выполните защиту заново.');
-    goHome();
-    return;
-  }
-  verifyBase = rec;
-  baseSim = bestSim;
-  zoneBase = { cx: zc.cx, cy: zc.cy, s: zc.s };
-  tmplData = (rec.zoneTemplate && rec.zoneTemplate.length === TMPL * TMPL)
-    ? new Uint8ClampedArray(rec.zoneTemplate) : null;
-  if (tmplMat) { try { tmplMat.delete(); } catch (e) {} tmplMat = null; }
-  trackBox = zoneToFrameFrac(zoneBase); // п.13-14: зелёная зона по координатам из базы
-  tmplSide = trackBox.fw;
-  tmplRefreshTick = tickCount;
-  state = 'locked';
-  trackMisses = 0;
-  syncShotBtn();
-  setHint(`Найдено: «${rec.name}». Приблизьтесь к зелёной зоне и нажмите «Фото».`);
-  setStatus(`Сходство: ${(bestSim * 100).toFixed(1)}%`);
-}
-
-// ==========================================================================
-//  П.6-8/16-18 — серия из 5 снимков и обработка
-// ==========================================================================
-const SHOT_GUIDE = [
-  'Снимок 1/5 готов. Сдвиньте камеру слегка ВЛЕВО (~10 см) и нажмите «Фото».',
-  'Снимок 2/5 готов. Сдвиньте камеру слегка ВПРАВО и нажмите «Фото».',
-  'Снимок 3/5 готов. Сдвиньте камеру слегка ВВЕРХ и нажмите «Фото».',
-  'Снимок 4/5 готов. Сдвиньте камеру слегка ВНИЗ и нажмите «Фото».',
-  'Все 5 снимков сделаны. Обрабатываем…'
-];
-
-async function onShot() {
-  if (state === 'locked') {
-    if (!trackBox) { setHint('Зона ещё не найдена — подождите или нажмите «Отмена».'); return; }
-    state = 'shoot';
-    targetIndex = 0;
-    shots = [];
-    captureShot();
-    targetIndex = 1;
-    setStatus('Снимок 1 из 5');
-    setHint(SHOT_GUIDE[0]);
-    return;
-  }
-  if (state === 'shoot') {
-    captureShot();
-    targetIndex++;
-    setStatus(`Снимок ${targetIndex} из 5`);
-    if (targetIndex < 5) { setHint(SHOT_GUIDE[targetIndex]); return; }
-    btnShot.disabled = true;
-    state = 'process';
-    setHint('Обработка…');
-    setStatus('Считаем карту высот…');
-    await setTorch(false);
-    setTimeout(() => {
-      processAll().catch(async e => {
-        console.error('processAll:', e);
-        await showModal('Ошибка', 'Ошибка обработки: ' + e.message);
-        goHome();
-      });
-    }, 150);
-  }
-}
-
-function captureShot() {
-  if (!trackBox || !video.videoWidth) return;
-  const vw = video.videoWidth, vh = video.videoHeight;
-  const x = Math.max(0, Math.min(vw - 8, Math.round(trackBox.fx * vw)));
-  const y = Math.max(0, Math.min(vh - 8, Math.round(trackBox.fy * vh)));
-  const w = Math.min(vw - x, Math.max(8, Math.round(trackBox.fw * vw)));
-  const h = Math.min(vh - y, Math.max(8, Math.round(trackBox.fh * vh)));
-  // патч 96×96 — для карты высот (п.7)
-  const pc = document.createElement('canvas');
-  pc.width = 96; pc.height = 96;
-  const pctx = pc.getContext('2d', { willReadFrequently: true });
-  pctx.drawImage(video, x, y, w, h, 0, 0, 96, 96);
-  const patch = pctx.getImageData(0, 0, 96, 96);
-  // полноразмерный кроп зоны (≤720 px) — для эталона (п.8/18)
-  const sc = Math.min(1, 720 / Math.max(w, h));
-  const fc = document.createElement('canvas');
-  fc.width = Math.max(8, Math.round(w * sc));
-  fc.height = Math.max(8, Math.round(h * sc));
-  const fctx = fc.getContext('2d', { willReadFrequently: true });
-  fctx.drawImage(video, x, y, w, h, 0, 0, fc.width, fc.height);
-  const full = fctx.getImageData(0, 0, fc.width, fc.height);
-  shots.push({ patch, full });
-}
-
-async function processAll() {
-  const hm = buildHeightMap(shots.map(s => s && s.patch)); // п.7/17: оценка 3D-поверхности
-  const heightMap = hm.map, stdZ = hm.std;
-  setStatus(`Карта высот: std(Z)=${stdZ.toFixed(2)}, покрытие ${(hm.validFrac * 100).toFixed(0)}%`);
-  if (mode === 'protect') await finishProtect(heightMap, stdZ, hm.validFrac);
-  else await finishVerify(heightMap, stdZ, hm.validFrac);
-}
-
-// п.8: выбор эталона 256×256 из 5 снимков — без бликов, с контрастом и ВЧ
-function selectBestReference(crops) {
-  const c64 = document.createElement('canvas');
-  c64.width = 64; c64.height = 64;
-  const x64 = c64.getContext('2d', { willReadFrequently: true });
-  let best = null;
-  for (const crop of crops) {
-    if (!crop) continue;
-    const w = crop.width, h = crop.height;
-    setCanvas(tmpCanvas, w, h);
-    tmpCtx.putImageData(crop, 0, 0);
-    const minSide = Math.min(w, h);
-    const sides = minSide >= 512 ? [256, 384] : [Math.min(256, minSide)];
-    for (const s of sides) {
-      if (s > minSide) continue;
-      const ox = (w - s) / 2, oy = (h - s) / 2;
-      const cands = [[ox, oy]];
-      if (w - s > 48) { cands.push([ox - (w - s) / 3, oy], [ox + (w - s) / 3, oy]); }
-      if (h - s > 48) { cands.push([ox, oy - (h - s) / 3], [ox, oy + (h - s) / 3]); }
-      for (const c of cands) {
-        const x0 = Math.round(Math.max(0, Math.min(w - s, c[0])));
-        const y0 = Math.round(Math.max(0, Math.min(h - s, c[1])));
-        x64.drawImage(tmpCanvas, x0, y0, s, s, 0, 0, 64, 64);
-        const d64 = x64.getImageData(0, 0, 64, 64);
-        const st = patchStats64(d64);
-        const spec = specFracOf(d64.data);
-        const specPen = spec < 0.02 ? 1 : (spec < 0.06 ? 0.5 : 0.18);
-        const score = (st.lapVar + 4) * (0.4 + st.lumStd / 90) * specPen;
-        if (!best || score > best.score) {
-          best = { crop, x0, y0, s, score, spec, lapVar: st.lapVar, lumStd: st.lumStd };
-        }
-      }
-    }
-  }
-  if (!best) return null;
-  const out = document.createElement('canvas');
-  out.width = 256; out.height = 256;
-  const octx = out.getContext('2d', { willReadFrequently: true });
-  setCanvas(tmpCanvas, best.crop.width, best.crop.height);
-  tmpCtx.putImageData(best.crop, 0, 0);
-  octx.drawImage(tmpCanvas, best.x0, best.y0, best.s, best.s, 0, 0, 256, 256);
-  const img = octx.getImageData(0, 0, 256, 256);
-  return {
-    data: img.data, w: 256, h: 256,
-    zx: best.x0 / best.crop.width, zy: best.y0 / best.crop.height,
-    zside: best.s / best.crop.width,
-    spec: best.spec, lapVar: best.lapVar, lumStd: best.lumStd
-  };
-}
-
-// п.8-10: защита — проверка 3D, выбор эталона, название, запись в базу
-async function finishProtect(heightMap, stdZ, validFrac) {
-  if (validFrac < 0.5) {
-    await showModal('Снимки не совмещаются',
-      `Общая область всего ${(validFrac * 100).toFixed(0)}% — сдвиги камеры были слишком большими. Повторите серию, сдвигая камеру на 1-2 см.`);
-    goHome();
-    return;
-  }
-  if (stdZ < HEIGHT_STD) {
-    await showModal('Защита невозможна',
-      `Поверхность плоская: перепад рельефа std(Z)=${stdZ.toFixed(2)} < ${HEIGHT_STD.toFixed(1)}. Похоже на полиграфию.`);
-    goHome();
-    return;
-  }
-  setStatus('Выбираем эталонный фрагмент 256×256…');
-  const ref = selectBestReference(shots.map(s => s && s.full));
-  if (!ref) {
-    await showModal('Ошибка', 'Не удалось выбрать эталонный фрагмент.');
-    goHome();
-    return;
-  }
-  const glare = ref.spec > 0.03
-    ? `\nВнимание: на фрагменте есть блики (${(ref.spec * 100).toFixed(0)}%) — при возможности переснимите.`
-    : '';
-  // п.9: название
-  const name = await showModal('Поверхность 3D — защита возможна',
-    `Рельеф: std(Z)=${stdZ.toFixed(2)}. Фрагмент: резкость ${ref.lapVar.toFixed(0)}, контраст ${ref.lumStd.toFixed(0)}, блики ${(ref.spec * 100).toFixed(0)}%.${glare}\nВведите название картины:`,
-    { input: true, okText: 'Сохранить' });
-  if (!name) {
-    await showModal('Отмена', 'Название не введено — запись не сохранена.');
-    goHome();
-    return;
-  }
-  // п.10: полная запись в базу
-  const record = {
-    schema: 2,
-    name,
-    createdAt: Date.now(),
-    globalFeatures: Array.from(globalFeatures || []),
-    zoneCoords: { cx: zoneBase.cx, cy: zoneBase.cy, s: zoneBase.s },
-    zoneTemplate: tmplData ? Array.from(tmplData) : null,
-    zoneFeatures: Array.from(zoneDescriptor({ data: ref.data, width: ref.w })),
-    reference: { data: Array.from(ref.data), w: ref.w, h: ref.h, zx: ref.zx, zy: ref.zy, zside: ref.zside },
-    heightMap: Array.from(heightMap),
-    stdZ,
-    validFrac
-  };
-  try {
-    await dbAdd(record);
-    await showModal('Готово',
-      `Картина «${name}» успешно защищена.\nДата: ${new Date(record.createdAt).toLocaleString()}`);
-  } catch (e) {
-    await showModal('Ошибка', 'Не удалось сохранить в базе: ' + e.message);
-  }
-  goHome();
-}
-
-function normalizeCropTo256(crop) {
-  setCanvas(tmpCanvas, crop.width, crop.height);
-  tmpCtx.putImageData(crop, 0, 0);
-  const out = document.createElement('canvas');
-  out.width = 256; out.height = 256;
-  const octx = out.getContext('2d', { willReadFrequently: true });
-  octx.drawImage(tmpCanvas, 0, 0, crop.width, crop.height, 0, 0, 256, 256);
-  return octx.getImageData(0, 0, 256, 256);
-}
-
-// то же под-окно эталона (zx,zy,zside) внутри тестового кадра зоны
-function refSubWindow(img256, zx, zy, zside) {
-  if (zside == null || zside >= 0.99) return img256;
-  const s = Math.max(32, Math.round(256 * zside));
-  const x0 = Math.max(0, Math.min(256 - s, Math.round((zx || 0) * 256)));
-  const y0 = Math.max(0, Math.min(256 - s, Math.round((zy || 0) * 256)));
-  setCanvas(tmpCanvas, 256, 256);
-  tmpCtx.putImageData(img256, 0, 0);
-  const out = document.createElement('canvas');
-  out.width = 256; out.height = 256;
-  const octx = out.getContext('2d', { willReadFrequently: true });
-  octx.drawImage(tmpCanvas, x0, y0, s, s, 0, 0, 256, 256);
-  return octx.getImageData(0, 0, 256, 256);
-}
-
-// п.17-19: проверка — 3D-поверхность, лучший снимок, сравнение с эталоном
-async function finishVerify(heightMap, stdZ, validFrac) {
-  if (!verifyBase || !verifyBase.reference) {
-    await showModal('Ошибка', 'Нет эталона для сравнения.');
-    goHome();
-    return;
-  }
-  if (validFrac < 0.5) {
-    await showModal('Снимки не совмещаются',
-      `Общая область всего ${(validFrac * 100).toFixed(0)}% — сдвиги камеры были слишком большими. Повторите серию, сдвигая камеру на 1-2 см.`);
-    goHome();
-    return;
-  }
-  if (stdZ < HEIGHT_STD) {
-    await showModal('КОПИЯ',
-      `Поверхность плоская: std(Z)=${stdZ.toFixed(2)} < ${HEIGHT_STD.toFixed(1)} — признаки полиграфии.`);
-    goHome();
-    return;
-  }
-  setStatus('Сравниваем с эталоном…');
-  const refStored = {
-    data: new Uint8ClampedArray(verifyBase.reference.data),
-    width: verifyBase.reference.w || 256,
-    height: verifyBase.reference.h || 256
-  };
-  const zx = verifyBase.reference.zx, zy = verifyBase.reference.zy, zside = verifyBase.reference.zside;
-  // п.18: из 5 снимков выбираем наилучший для отображения эталонной зоны
-  const results = [];
-  for (const s of shots) {
-    if (!s || !s.full) continue;
-    const norm = normalizeCropTo256(s.full);
-    const cands = [refSubWindow(norm, zx, zy, zside)];
-    if (zside != null && zside < 0.99) cands.push(norm);
-    for (const c of cands) {
-      const aligned = alignFragmentAffine(c, refStored); // коррекция сдвига/масштаба
-      results.push({ aligned, spec: specFracOf(c.data) });
-    }
-  }
-  if (!results.length) {
-    await showModal('Ошибка', 'Нет снимков для сравнения.');
-    goHome();
-    return;
-  }
-  results.sort((a, b) => b.aligned.corr - a.aligned.corr);
-  let chosen = results[0];
-  // пере-ранжирование с учётом бликов: если лучший в бликах — берём чистый аналог
-  if (chosen.spec > 0.06) {
-    const alt = results.find(r => r.spec < 0.03 && r.aligned.corr >= chosen.aligned.corr - 0.03);
-    if (alt) chosen = alt;
-  }
-  const cmask = chosen.aligned.mask;
-  const corrR = channelCorrelation(chosen.aligned.data, refStored.data, 0, cmask);
-  const corrG = channelCorrelation(chosen.aligned.data, refStored.data, 1, cmask);
-  const corrB = channelCorrelation(chosen.aligned.data, refStored.data, 2, cmask);
-  const corrAvg = (corrR + corrG + corrB) / 3;
-  const baseMap = verifyBase.heightMap;
-  let dot = 0, na = 0, nb = 0, zn = 0;
-  const npx = Math.min(heightMap.length, baseMap.length);
-  for (let i = 0; i < npx; i++) {
-    if (!heightMap[i] && !baseMap[i]) continue; // пропускаем невалидные границы
-    dot += heightMap[i] * baseMap[i];
-    na += heightMap[i] * heightMap[i];
-    nb += baseMap[i] * baseMap[i];
-    zn++;
-  }
-  const simZ = (zn > 100 && Math.sqrt(na) * Math.sqrt(nb) > 1e-9) ? dot / (Math.sqrt(na) * Math.sqrt(nb)) : 0;
-  const metrics =
-    `Фрагмент: ${(corrAvg * 100).toFixed(1)}% (R ${(corrR * 100).toFixed(0)}, G ${(corrG * 100).toFixed(0)}, B ${(corrB * 100).toFixed(0)}).\n` +
-    `Рельеф: ${(simZ * 100).toFixed(1)}%. std(Z): тест ${stdZ.toFixed(2)} / эталон ${(verifyBase.stdZ || 0).toFixed(2)}.\n` +
-    `Блики: ${(chosen.spec * 100).toFixed(0)}%. Пороги: фрагмент ≥ ${(CORR_MATCH * 100)}%, рельеф ≥ ${(SIMZ_MATCH * 100)}%.`;
-  // п.19: решение о подлинности
-  if (corrAvg >= CORR_MATCH && simZ >= SIMZ_MATCH) {
-    await showModal('ОРИГИНАЛ', `Картина «${verifyBase.name}».\n${metrics}`);
-  } else {
-    const why = corrAvg < CORR_MATCH ? 'изображение зоны не совпадает с эталоном' : 'карта рельефа не совпадает с эталоном';
-    await showModal('КОПИЯ', `${why.charAt(0).toUpperCase() + why.slice(1)}.\n${metrics}`);
-  }
-  goHome();
-}
-
-// ==========================================================================
-//  Управление потоком
-// ==========================================================================
-function syncShotBtn() {
-  btnShot.disabled = !(state === 'locked' || state === 'shoot');
-}
-
-function resetSession() {
-  paintBox = null; paintHits = 0; paintMisses = 0; boundaryVisible = false; paintFillsFrame = false;
-  boundaryPhase = true; tmplSide = 0; tmplRefreshTick = -99;
-  fillHits = 0;
-  zoneEMA = null; zoneBase = null; zoneStable = 0; zoneEntropy = 0;
-  trackBox = null; trackMisses = 0; lastTrackScore = 0; dispBox = null;
-  globalFeatures = null; verifyBase = null; baseSim = null;
-  shots = []; targetIndex = 0;
-  if (tmplMat) { try { tmplMat.delete(); } catch (e) {} }
-  tmplMat = null; tmplData = null;
-}
-
-function goHome() {
-  stopTicks();
-  stopCamera();
-  cameraEl.style.display = 'none';
-  home.style.display = 'flex';
-  objectBox.style.display = 'none';
-  entropyBox.style.display = 'none';
-  state = 'idle';
-  mode = null;
-  resetSession();
-  btnTorch.textContent = 'Фонарик';
-  torchOn = false;
-  btnShot.disabled = false;
-  setHint('');
-  setStatus('');
-}
-
-async function enterCamera() {
-  home.style.display = 'none';
-  cameraEl.style.display = 'flex';
-  resetSession();
-  btnShot.disabled = true;
-  try {
-    await startCamera();   // п.1/11: камера включается
-    await setTorch(true);  // ...с фонариком
-  } catch (e) {
-    await showModal('Ошибка', e.message);
-    goHome();
-    return;
-  }
-  state = 'detect';
-  detectStartedAt = Date.now();
-  syncShotBtn();
-  startRenderLoop();
-  startTicks();
-  setHint(mode === 'protect'
-    ? 'Режим «Защита». Наведите камеру на картину — ищем прямоугольный объект…'
-    : 'Режим «Проверка». Наведите камеру на картину — ищем прямоугольный объект…');
-}
-
-async function startProtect() {
-  if (!cvReady) { await showModal('Подождите', 'Модули ещё загружаются…'); return; }
-  mode = 'protect';
-  await enterCamera();
-}
-async function startVerify() {
-  if (!cvReady) { await showModal('Подождите', 'Модули ещё загружаются…'); return; }
-  mode = 'verify';
-  await enterCamera();
-}
-
-// ---------- Привязка событий ----------
-btnProtect.onclick = startProtect;
-btnVerify.onclick = startVerify;
-btnShot.onclick = onShot;
-btnCancel.onclick = () => { setTorch(false).finally(() => goHome()); };
-btnTorch.onclick = async () => {
-  const ok = await setTorch(!torchOn);
-  if (!ok) setHint('Фонарик недоступен на этом устройстве.');
-};
-window.addEventListener('resize', () => { renderBoxes(); });
-window.addEventListener('orientationchange', () => { setTimeout(renderBoxes, 300); });
-document.addEventListener('visibilitychange', () => {
-  if (document.hidden) stopTicks();
-  else if (state !== 'idle') startTicks();
-});
-
-
-
-      function openDB() {
-        if (dbPromise) return dbPromise;
-        dbPromise = new Promise((resolve, reject) => {
-          const req = indexedDB.open(DB_NAME, 1);
-          req.onupgradeneeded = () => {
-            const db = req.result;
-            if (!db.objectStoreNames.contains(STORE)) {
-              db.createObjectStore(STORE, {
-                keyPath: 'id',
-                autoIncrement: true
-              });
-            }
-          };
-          req.onsuccess = () => resolve(req.result);
-          req.onerror = () => reject(req.error);
-        });
-        return dbPromise;
-      }
-
-      async function dbAdd(rec) {
-        const db = await openDB();
-        return new Promise((res, rej) => {
-          const tx = db.transaction(STORE, 'readwrite');
-          const r = tx.objectStore(STORE).add(rec);
-          r.onsuccess = () => res(r.result);
-          r.onerror = () => rej(r.error);
-        });
-      }
-
-      async function dbAll() {
-        const db = await openDB();
-        return new Promise((res, rej) => {
-          const tx = db.transaction(STORE, 'readonly');
-          const r = tx.objectStore(STORE).getAll();
-          r.onsuccess = () => res(r.result);
-          r.onerror = () => rej(r.error);
-        });
-      }
-
-
-      function showModal(title, text, opts = {}) {
-        modalTitle.textContent = title;
-        modalText.textContent = text || '';
-        modalInput.style.display = opts.input ? 'block' : 'none';
-        modalInput.value = '';
-        modalOk.textContent = opts.okText || 'OK';
-        modal.style.display = 'flex';
-        return new Promise((resolve) => {
-          modalOk.onclick = () => {
-            modal.style.display = 'none';
-            resolve(opts.input ? modalInput.value.trim() : true);
-          };
-        });
-      }
-
-
-      function cosine(a, b) {
-        if (!a || !b) return 0;
-        const n = Math.min(a.length, b.length);
-        if (n === 0) return 0;
-        let dot = 0,
-          na = 0,
-          nb = 0;
-        for (let i = 0; i < n; i++) {
-          dot += a[i] * b[i];
-          na += a[i] * a[i];
-          nb += b[i] * b[i];
-        }
-        const denom = Math.sqrt(na) * Math.sqrt(nb);
-        if (denom < 1e-9) return 0;
-        return dot / denom;
-      }
-
-
-      function normalizeL2(vec) {
-        if (!vec) return vec;
-        let s = 0;
-        for (let i = 0; i < vec.length; i++) s += vec[i] * vec[i];
-        const n = Math.sqrt(s);
-        if (n < 1e-9) return vec;
-        const out = new Float32Array(vec.length);
-        for (let i = 0; i < vec.length; i++) out[i] = vec[i] / n;
-        return out;
-      }
-
-      async function startCamera() {
-        if (stream) return;
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: {
-              facingMode: {
-                ideal: 'environment'
-              },
-              width: {
-                ideal: 1920
-              },
-              height: {
-                ideal: 1080
-              }
-            },
-            audio: false
-          });
-        } catch (e) {
-          console.error('getUserMedia error:', e);
-          throw new Error('Не удалось получить доступ к камере: ' + e.message);
-        }
-        video.srcObject = stream;
-        videoTrack = stream.getVideoTracks()[0];
-        await new Promise((resolve, reject) => {
-          const timeout = setTimeout(() => {
-            reject(new Error('Камера не запустилась (таймаут 5 сек)'));
-          }, 5000);
-
-          const check = () => {
-            if (video.videoWidth > 0 && video.videoHeight > 0) {
-              clearTimeout(timeout);
-              resolve();
-            } else {
-              setTimeout(check, 100);
-            }
-          };
-          check();
-        });
-      }
-
-
-      function stopCamera() {
-        if (stream) {
-          stream.getTracks().forEach(t => t.stop());
-          stream = null;
-          videoTrack = null;
-        }
-      }
-
-      async function setTorch(on) {
-        if (!videoTrack) return false;
-        try {
-          const caps = videoTrack.getCapabilities?.() || {};
-          if (!caps.torch) return false;
-          await videoTrack.applyConstraints({
-            advanced: [{
-              torch: on
-            }]
-          });
-          torchOn = on;
-          btnTorch.textContent = on ? 'Фонарик ВКЛ' : 'Фонарик';
-          return true;
-        } catch (e) {
-          console.warn('setTorch error:', e);
-          return false;
-        }
-      }
-
-
-      function computeGeometry() {
-        const cw = videoWrap.clientWidth,
-          ch = videoWrap.clientHeight;
-        const vw = video.videoWidth,
-          vh = video.videoHeight;
-        if (!cw || !ch || !vw || !vh) return null;
-        const va = vw / vh,
-          ca = cw / ch;
-        let drawW, drawH, offX, offY;
-        if (va > ca) {
-          drawW = cw;
-          drawH = cw / va;
-          offX = 0;
-          offY = (ch - drawH) / 2;
-        } else {
-          drawH = ch;
-          drawW = ch * va;
-          offX = (cw - drawW) / 2;
-          offY = 0;
-        }
-        return {
-          cw,
-          ch,
-          drawW,
-          drawH,
-          offX,
-          offY
-        };
-      }
-function alignShotToRef(shot, ref) {
-        const W = ref.width, H = ref.height;
-        const sd = shot.data, rd = ref.data;
-        const maxShift = 8;
-        let bestShift = { dx: 0, dy: 0 }, bestCorr = -1;
-        for (let dy = -maxShift; dy <= maxShift; dy += 2) {
-          for (let dx = -maxShift; dx <= maxShift; dx += 2) {
-            let sumS = 0, sumR = 0, sumSR = 0, sumS2 = 0, sumR2 = 0, n = 0;
-            for (let y = Math.max(0, -dy); y < Math.min(H, H - dy); y += 3) {
-              for (let x = Math.max(0, -dx); x < Math.min(W, W - dx); x += 3) {
-                const si = ((y + dy) * W + (x + dx)) * 4;
-                const ri = (y * W + x) * 4;
-                const ls = 0.299 * sd[si] + 0.587 * sd[si + 1] + 0.114 * sd[si + 2];
-                const lr = 0.299 * rd[ri] + 0.587 * rd[ri + 1] + 0.114 * rd[ri + 2];
-                sumS += ls; sumR += lr; sumSR += ls * lr; sumS2 += ls * ls; sumR2 += lr * lr; n++;
-              }
-            }
-            if (n < 50) continue;
-            const num = n * sumSR - sumS * sumR;
-            const den = Math.sqrt((n * sumS2 - sumS * sumS) * (n * sumR2 - sumR * sumR)) + 1e-9;
-            const corr = num / den;
-            if (corr > bestCorr) { bestCorr = corr; bestShift = { dx, dy }; }
-          }
-        }
-        const out = new Uint8ClampedArray(W * H * 4);
-        const mask = new Uint8Array(W * H); // 1 = пиксель покрыт снимком (не чёрная граница)
-        for (let y = 0; y < H; y++) {
-          for (let x = 0; x < W; x++) {
-            const tx = x + bestShift.dx, ty = y + bestShift.dy;
-            const di = (y * W + x) * 4;
-            if (tx >= 0 && tx < W && ty >= 0 && ty < H) {
-              const si = (ty * W + tx) * 4;
-              out[di] = sd[si]; out[di + 1] = sd[si + 1]; out[di + 2] = sd[si + 2]; out[di + 3] = 255;
-              mask[y * W + x] = 1;
-            } else {
-              out[di] = 0; out[di + 1] = 0; out[di + 2] = 0; out[di + 3] = 255;
-            }
-          }
-        }
-        return { data: out, width: W, height: H, shift: bestShift, corr: bestCorr, mask };
-      }
-function buildHeightMap(shts) {
-        const W = 96, H = 96;
-        const out = new Float32Array(W * H);
-        const valid = shts.filter(s => s);
-        if (valid.length < 2) return { map: out, std: 0, validFrac: 0 };
-        const ref = valid[0];
-        const aligned = [ref];
-        const masks = [null];
-        for (let i = 1; i < valid.length; i++) {
-          const a = alignShotToRef(valid[i], ref);
-          aligned.push(a);
-          masks.push(a.mask);
-        }
-        // маска пикселей, покрытых всеми снимками
-        const okMask = new Uint8Array(W * H);
-        let vn = 0;
-        for (let i = 0; i < W * H; i++) {
-          let ok = 1;
-          for (let k = 1; k < masks.length; k++) if (masks[k] && !masks[k][i]) { ok = 0; break; }
-          okMask[i] = ok;
-          if (ok) vn++;
-        }
-        if (!vn) return { map: out, std: 0, validFrac: 0 };
-        // яркость каждого выровненного снимка
-        const lum = aligned.map(s => {
-          const l = new Float32Array(W * H);
-          const d = s.data;
-          for (let i = 0; i < W * H; i++) l[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2];
-          return l;
-        });
-        // убираем межкадровую разницу экспозиции (среднее по валидной области)
-        for (let k = 0; k < lum.length; k++) {
-          let m = 0;
-          for (let i = 0; i < W * H; i++) if (okMask[i]) m += lum[k][i];
-          m /= vn;
-          for (let i = 0; i < W * H; i++) lum[k][i] -= m;
-        }
-        // per-pixel std по снимкам = оценка рельефа (п.7)
-        let vsum = 0, vsum2 = 0;
-        for (let i = 0; i < W * H; i++) {
-          if (!okMask[i]) { out[i] = 0; continue; }
-          let mean = 0;
-          for (let k = 0; k < lum.length; k++) mean += lum[k][i];
-          mean /= lum.length;
-          let v = 0;
-          for (let k = 0; k < lum.length; k++) { const dd = lum[k][i] - mean; v += dd * dd; }
-          const sd = Math.sqrt(v / lum.length);
-          out[i] = sd;
-          vsum += sd; vsum2 += sd * sd;
-        }
-        const m = vsum / vn;
-        const std = Math.sqrt(Math.max(0, vsum2 / vn - m * m));
-        return { map: out, std, validFrac: vn / (W * H) };
-      }
-function alignFragmentAffine(test, ref) {
-        const W = ref.width, H = ref.height;
-        const td = test.data, rd = ref.data;
-        const maxShift = 12;
-        let bestShift = { dx: 0, dy: 0 }, bestCorr = -1;
-        for (let dy = -maxShift; dy <= maxShift; dy += 2) {
-          for (let dx = -maxShift; dx <= maxShift; dx += 2) {
-            let sumT = 0, sumR = 0, sumTR = 0, sumT2 = 0, sumR2 = 0, n = 0;
-            for (let y = Math.max(0, -dy); y < Math.min(H, H - dy); y += 3) {
-              for (let x = Math.max(0, -dx); x < Math.min(W, W - dx); x += 3) {
-                const ti = ((y + dy) * W + (x + dx)) * 4;
-                const ri = (y * W + x) * 4;
-                const lt = 0.299 * td[ti] + 0.587 * td[ti + 1] + 0.114 * td[ti + 2];
-                const lr = 0.299 * rd[ri] + 0.587 * rd[ri + 1] + 0.114 * rd[ri + 2];
-                sumT += lt; sumR += lr; sumTR += lt * lr; sumT2 += lt * lt; sumR2 += lr * lr; n++;
-              }
-            }
-            if (n < 50) continue;
-            const num = n * sumTR - sumT * sumR;
-            const den = Math.sqrt((n * sumT2 - sumT * sumT) * (n * sumR2 - sumR * sumR)) + 1e-9;
-            const corr = num / den;
-            if (corr > bestCorr) { bestCorr = corr; bestShift = { dx, dy }; }
-          }
-        }
-        const out = new Uint8ClampedArray(W * H * 4);
-        const mask = new Uint8Array(W * H);
-        for (let y = 0; y < H; y++) {
-          for (let x = 0; x < W; x++) {
-            const tx = x + bestShift.dx, ty = y + bestShift.dy;
-            const di = (y * W + x) * 4;
-            if (tx >= 0 && tx < W && ty >= 0 && ty < H) {
-              const si = (ty * W + tx) * 4;
-              out[di] = td[si]; out[di + 1] = td[si + 1]; out[di + 2] = td[si + 2]; out[di + 3] = 255;
-              mask[y * W + x] = 1;
-            } else {
-              out[di] = 0; out[di + 1] = 0; out[di + 2] = 0; out[di + 3] = 255;
-            }
-          }
-        }
-        return { data: out, width: W, height: H, shift: bestShift, corr: bestCorr, mask };
-      }
-function channelCorrelation(a, b, channel, mask) {
-        const n = Math.min(a.length, b.length) / 4;
-        let sa = 0, sb = 0, sab = 0, sa2 = 0, sb2 = 0, cnt = 0;
-        for (let i = 0; i < n; i++) {
-          if (mask && !mask[i]) continue;
-          const va = a[i * 4 + channel];
-          const vb = b[i * 4 + channel];
-          sa += va; sb += vb; sab += va * vb; sa2 += va * va; sb2 += vb * vb; cnt++;
-        }
-        if (cnt < 50) return 0;
-        const num = cnt * sab - sa * sb;
-        const den = Math.sqrt((cnt * sa2 - sa * sa) * (cnt * sb2 - sb * sb)) + 1e-9;
-        return num / den;
-      }
-
-      // ================= ЗАГРУЗЧИК OPENCV =================
-      const CV_URLS = [
-        'https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.9.0-release.3/dist/opencv.js',
-        'https://docs.opencv.org/4.9.0/opencv.js'
-      ];
-      const STALL_MS = 20000;
-      const INIT_TIMEOUT_MS = 180000;
-      const btnRetry = document.getElementById('btnRetry');
-
-      const fmtMB = b => (b / 1048576).toFixed(2);
-      const fmtTime = s => {
-        if (!isFinite(s) || s < 0) return '—';
-        s = Math.round(s);
-        return s < 60 ? s + ' с' : Math.floor(s / 60) + ' мин ' + (s % 60) + ' с';
-      };
-
-      function setBar(pct) {
-        if (pct == null) {
-          progressBar.classList.add('indeterminate');
-          progressBar.style.width = '';
-        } else {
-          progressBar.classList.remove('indeterminate');
-          progressBar.style.width = Math.max(0, Math.min(100, pct)) + '%';
-        }
-      }
-
-      async function downloadWithProgress(url) {
-        const ctrl = new AbortController();
-        let lastByteAt = Date.now();
-        const watchdog = setInterval(() => {
-          if (Date.now() - lastByteAt > STALL_MS) ctrl.abort();
-        }, 1000);
-        try {
-          const resp = await fetch(url, {
-            signal: ctrl.signal
-          });
-          if (!resp.ok) throw new Error('Сервер ответил HTTP ' + resp.status);
-          const total = Number(resp.headers.get('content-length')) || 0;
-          const packed = /gzip|br|deflate/i.test(resp.headers.get('content-encoding') || '');
-          const knownTotal = (total && !packed) ? total : 0;
-
-          if (!resp.body || !resp.body.getReader) {
-            setBar(null);
-            progressInfo.textContent = 'Загрузка… (браузер не отдаёт прогресс)';
-            return await resp.text();
-          }
-
-          const reader = resp.body.getReader();
-          const chunks = [];
-          let loaded = 0;
-          const t0 = Date.now();
-          let lastT = t0,
-            lastLoaded = 0,
-            speed = 0;
-
-          while (true) {
-            const {
-              done,
-              value
-            } = await reader.read();
-            if (done) break;
-            chunks.push(value);
-            loaded += value.length;
-            lastByteAt = Date.now();
-            const now = Date.now();
-            if (now - lastT > 400) {
-              const inst = (loaded - lastLoaded) / ((now - lastT) / 1000);
-              speed = speed ? speed * 0.7 + inst * 0.3 : inst;
-              lastT = now;
-              lastLoaded = loaded;
-              if (knownTotal && loaded <= knownTotal) {
-                const pct = loaded / knownTotal * 100;
-                setBar(pct);
-                const eta = speed > 1024 ? (knownTotal - loaded) / speed : NaN;
-                progressInfo.textContent =
-                  pct.toFixed(0) + '% · ' + fmtMB(loaded) + ' / ' + fmtMB(knownTotal) + ' МБ · ' +
-                  fmtMB(speed) + ' МБ/с · осталось ~' + fmtTime(eta);
-              } else {
-                setBar(null);
-                progressInfo.textContent =
-                  fmtMB(loaded) + ' МБ · ' + fmtMB(speed) + ' МБ/с · прошло ' + fmtTime((now - t0) / 1000);
-              }
-            }
-          }
-          const buf = new Uint8Array(loaded);
-          let off = 0;
-          for (const c of chunks) {
-            buf.set(c, off);
-            off += c.length;
-          }
-          return new TextDecoder('utf-8').decode(buf);
-        } finally {
-          clearInterval(watchdog);
-        }
-      }
-
-      function initCv(scriptText) {
-        return new Promise((resolve, reject) => {
-          loadingSubtitle.textContent = 'Инициализация модуля на устройстве…';
-          setBar(null);
-          const timer = setTimeout(() => reject(new Error('Таймаут инициализации')), INIT_TIMEOUT_MS);
-          const s = document.createElement('script');
-          s.textContent = scriptText;
-          document.head.appendChild(s);
-          const t0 = Date.now();
-          const tick = setInterval(() => {
-            progressInfo.textContent = 'Компиляция… прошло ' + fmtTime((Date.now() - t0) / 1000);
-          }, 500);
-          const ok = () => {
-            clearInterval(tick);
-            clearTimeout(timer);
-            resolve();
-          };
-          const wait = () => {
-            const cv = window.cv;
-            if (cv && typeof cv.then === 'function') {
-              cv.then(m => {
-                window.cv = m;
-                ok();
-              }, reject);
-              return;
-            }
-            if (cv && cv.Mat) {
-              ok();
-              return;
-            }
-            if (cv) {
-              cv.onRuntimeInitialized = ok;
-              return;
-            }
-            setTimeout(wait, 100);
-          };
-          wait();
-        });
-      }
-
-      (async () => {
-        try {
-          loadingSubtitle.textContent = 'Загрузка модуля распознавания…';
-          let text = null,
-            lastErr = null;
-          for (let i = 0; i < CV_URLS.length; i++) {
-            try {
-              text = await downloadWithProgress(CV_URLS[i]);
-              break;
-            } catch (err) {
-              lastErr = err;
-              if (i < CV_URLS.length - 1) {
-                progressInfo.textContent = 'Основной источник недоступен, пробую резервный…';
-              }
-            }
-          }
-          if (text == null) throw lastErr || new Error('Не удалось скачать модуль');
-          await initCv(text);
-          cvReady = true;
-          setBar(100);
-          loadingTitle.textContent = 'Готово';
-          loadingSubtitle.textContent = 'Модули загружены';
-          progressInfo.textContent = '';
-          btnProtect.disabled = false;
-          btnVerify.disabled = false;
-          setTimeout(() => {
-            loadingOverlay.style.display = 'none';
-          }, 600);
-        } catch (e) {
-          console.error('CV load error:', e);
-          loadingTitle.textContent = 'Ошибка загрузки';
-          loadingSubtitle.textContent = e.name === 'AbortError' ?
-            'Сервер перестал присылать данные' :
-            (e.message || 'Неизвестная ошибка');
-          progressBar.classList.remove('indeterminate');
-          progressBar.style.background = '#ff453a';
-          progressInfo.textContent = 'Проверьте интернет и нажмите «Повторить»';
-          btnRetry.style.display = 'block';
-        }
-      })();
-      btnRetry.onclick = () => location.reload();
-
-      if (!('indexedDB' in window)) {
-        console.warn('IndexedDB не поддерживается');
-      }
-    })();
-  </script>
-</body>
-
-</html>
+  let sx = 0, sy
