@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <!-- Art Inspector | Сборка: 02.11.2026 05:43 (Asia/Shanghai) -->
 <html lang="ru">
@@ -530,7 +529,7 @@ function specFracOf(d) {
   return n ? c / n : 1;
 }
 
-// контраст (std яркости) и резкость (дисперсия лапласиана) дляImageData 64x64
+// контраст (std яркости) и резкость (дисперсия лапласиана) для ImageData 64x64
 function patchStats64(imgData) {
   const S = imgData.width, d = imgData.data;
   const g = new Float32Array(S * S);
@@ -630,6 +629,26 @@ function scanQuads(cv, edges, kernel, blur, lo, hi, fr) {
         const area = cv.contourArea(cnt);
         if (area < imgArea * 0.05) continue;
         if (area > imgArea * 0.965) { sawFill = true; continue; } // граница ушла за кадр
+
+        // Границы контура (нужны и для fill-детекции, и для скоринга ниже)
+        const cxs = [];
+        const cys = [];
+        const cptr = cnt.data32S;
+        for (let j = 0; j < cnt.rows; j++) { cxs.push(cptr[j * 2]); cys.push(cptr[j * 2 + 1]); }
+        const cminX = Math.min(...cxs), cmaxX = Math.max(...cxs);
+        const cminY = Math.min(...cys), cmaxY = Math.max(...cys);
+
+        // Картина заполняет кадр: крупный контур упирается в ≥2 края кадра.
+        // Такой контур обрезан краем, его contourArea занижена — поэтому отдельная проверка.
+        const touchesEdges =
+          (cminX <= fr.W * 0.03 ? 1 : 0) + (cminY <= fr.H * 0.03 ? 1 : 0) +
+          (cmaxX >= fr.W * 0.97 ? 1 : 0) + (cmaxY >= fr.H * 0.97 ? 1 : 0);
+        const bboxFill = (cmaxX - cminX) * (cmaxY - cminY) / imgArea;
+        if (touchesEdges >= 2 && (bboxFill >= 0.70 || area >= imgArea * 0.45)) {
+          sawFill = true;
+          continue;
+        }
+
         const peri = cv.arcLength(cnt, true);
         approx = new cv.Mat();
         cv.approxPolyDP(cnt, approx, 0.045 * peri, true);
@@ -720,6 +739,12 @@ function updateBoundary() {
   } else {
     paintMisses++; paintHits = 0;
     if (paintMisses >= 4) boundaryVisible = false;
+    // Граница пропала, но по последним данным картина уже почти на весь кадр —
+    // это штатный переход к работе по фичам, а не потеря картины.
+    if (paintBox && paintMisses >= 2 &&
+        (paintBox.areaFrac >= FILL_AREA || boxNearFrameEdges(paintBox) || looksLikeFills())) {
+      return { fills: true };
+    }
   }
   return det;
 }
@@ -734,11 +759,16 @@ function boxNearFrameEdges(b) {
 // переход «картина на весь кадр»: поиск рамки ПРЕКРАЩАЕТСЯ, дальше — только фичи
 function transitionToFills(fullFrame) {
   fillHits = 0;
-  if (fullFrame || !paintBox) {
+  // Если рамка уже была зафиксирована и почти совпадает с кадром — сохраняем её:
+  // она точнее, чем искусственный fullFrame. Иначе — берём весь кадр.
+  const reuse =
+    !fullFrame && paintBox &&
+    (paintBox.areaFrac >= FILL_AREA || boxNearFrameEdges(paintBox));
+  if (!reuse) {
     paintBox = { fx: 0, fy: 0, fw: 1, fh: 1, areaFrac: 1 };
   }
-  boundaryPhase = false;      // больше не ищем жёлтую рамку в этой сессии
-  boundaryVisible = false;    // жёлтая рамка скрывается (п.3)
+  boundaryPhase = false;    // больше не ищем жёлтую рамку в этой сессии
+  boundaryVisible = false;  // жёлтая рамка скрывается (п.3)
   paintFillsFrame = true;
 }
 
@@ -1072,15 +1102,20 @@ async function onTick() {
 }
 function tickDetect() {
   const det = updateBoundary();
+
+  // Сигнал "картина заполняет кадр" (в т.ч. при потере обрезанной границы)
   if (det && det.fills) {
-    // уже близко: картина занимает весь кадр
     fillHits++;
     setHint('Картина на весь кадр. Держите камеру неподвижно…');
     setStatus('Картина заполняет кадр');
+    detectStartedAt = Date.now(); // живой сигнал — не даём таймауту сработать
     if (fillHits >= FILL_HITS) { transitionToFills(true); onPaintingFilled(); }
     return;
   }
+
+  // Граница видна: показываем прогресс и ждём заполнения кадра
   if (boundaryVisible && paintBox) {
+    detectStartedAt = Date.now();
     const nearEdges = boxNearFrameEdges(paintBox);
     setHint(nearEdges
       ? 'Картина почти на весь кадр — держите камеру неподвижно…'
@@ -1092,13 +1127,22 @@ function tickDetect() {
     } else fillHits = 0;
     return;
   }
-  // граница не видна
-  if (looksLikeFills() && paintMisses >= 3) {
-    // рамка ушла за границы кадра при приближении — переходим к фичам (п.3)
+
+  // Граница не видна. Переход к работе по фичам, если картина уже занимает кадр:
+  //  - paintBox большой / упирается в края кадра (был зафиксирован ранее), ИЛИ
+  //  - граница давно пропала, а paintBox был крупным, ИЛИ
+  //  - картина была замечена (fillHits / большой paintBox), но детектор её не видит
+  const lostButFilled =
+    (paintBox && (paintBox.areaFrac >= FILL_AREA || boxNearFrameEdges(paintBox) || looksLikeFills())) ||
+    (boundaryVisible === false && paintBox && paintBox.areaFrac >= 0.45 && paintMisses >= 2) ||
+    (boundaryVisible === false && fillHits > 0 && paintMisses >= 2);
+
+  if (lostButFilled && paintMisses >= 2) {
     transitionToFills(true);
     onPaintingFilled();
     return;
   }
+
   fillHits = 0;
   setHint('Наведите камеру на картину — ищем прямоугольный объект…');
   const left = Math.max(0, Math.ceil((DETECT_TIMEOUT_MS - (Date.now() - detectStartedAt)) / 1000));
