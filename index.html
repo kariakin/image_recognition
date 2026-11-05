@@ -628,27 +628,9 @@ function scanQuads(cv, edges, kernel, blur, lo, hi, fr) {
       try {
         const area = cv.contourArea(cnt);
         if (area < imgArea * 0.05) continue;
-        if (area > imgArea * 0.965) { sawFill = true; continue; } // граница ушла за кадр
-
-        // Границы контура (нужны и для fill-детекции, и для скоринга ниже)
-        const cxs = [];
-        const cys = [];
-        const cptr = cnt.data32S;
-        for (let j = 0; j < cnt.rows; j++) { cxs.push(cptr[j * 2]); cys.push(cptr[j * 2 + 1]); }
-        const cminX = Math.min(...cxs), cmaxX = Math.max(...cxs);
-        const cminY = Math.min(...cys), cmaxY = Math.max(...cys);
-
-        // Картина заполняет кадр: крупный контур упирается в ≥2 края кадра.
-        // Такой контур обрезан краем, его contourArea занижена — поэтому отдельная проверка.
-        const touchesEdges =
-          (cminX <= fr.W * 0.03 ? 1 : 0) + (cminY <= fr.H * 0.03 ? 1 : 0) +
-          (cmaxX >= fr.W * 0.97 ? 1 : 0) + (cmaxY >= fr.H * 0.97 ? 1 : 0);
-        const bboxFill = (cmaxX - cminX) * (cmaxY - cminY) / imgArea;
-        if (touchesEdges >= 2 && (bboxFill >= 0.70 || area >= imgArea * 0.45)) {
-          sawFill = true;
-          continue;
-        }
-
+        // контур, занимающий почти весь кадр, вообще не может быть валидной рамкой
+        // (если он не обрезан — тогда да, это fill; если обрезан — площадь занижена,
+        //  и такой контур мы ниже отдельно пометим как sawFill)
         const peri = cv.arcLength(cnt, true);
         approx = new cv.Mat();
         cv.approxPolyDP(cnt, approx, 0.045 * peri, true);
@@ -676,7 +658,7 @@ function scanQuads(cv, edges, kernel, blur, lo, hi, fr) {
         if (bw < 12 || bh < 12) continue;
         if (Math.max(bw, bh) / Math.min(bw, bh) > 4.5) continue;
         const fill = area / (bw * bh);
-        if (fill < (rows === 4 ? 0.62 : 0.78)) continue; // 5-6 вершин — только почти идеальные
+        if (fill < (rows === 4 ? 0.62 : 0.78)) continue;
         const ccx = (minX + maxX) / 2 / fr.W, ccy = (minY + maxY) / 2 / fr.H;
         const centrality = 1 - Math.min(1, Math.hypot(ccx - 0.5, ccy - 0.5) / 0.7);
         const score = area * fill * (0.7 + 0.3 * centrality) * (rows === 4 ? 1.0 : 0.85);
@@ -685,6 +667,17 @@ function scanQuads(cv, edges, kernel, blur, lo, hi, fr) {
             fx: minX / fr.W, fy: minY / fr.H, fw: bw / fr.W, fh: bh / fr.H,
             areaFrac: area / imgArea, score
           };
+        }
+
+        // Дополнительно: если этот валидный контур занимает >=60% кадра и
+        // упирается в >=2 края — это признак "картина заполняет кадр".
+        // НО: только если bbox действительно большой и контур почти в края.
+        const touchesEdges =
+          (minX <= fr.W * 0.01 ? 1 : 0) + (minY <= fr.H * 0.01 ? 1 : 0) +
+          (maxX >= fr.W * 0.99 ? 1 : 0) + (maxY >= fr.H * 0.99 ? 1 : 0);
+        const bboxFill = (maxX - minX) * (maxY - minY) / imgArea;
+        if (touchesEdges >= 2 && bboxFill >= 0.88 && area >= imgArea * 0.60) {
+          sawFill = true;
         }
       } finally {
         if (approx) approx.delete();
@@ -736,13 +729,12 @@ function updateBoundary() {
       paintFillsFrame = false;
       detectStartedAt = Date.now();
     }
-  } else {
+   } else {
     paintMisses++; paintHits = 0;
     if (paintMisses >= 4) boundaryVisible = false;
-    // Граница пропала, но по последним данным картина уже почти на весь кадр —
-    // это штатный переход к работе по фичам, а не потеря картины.
-    if (paintBox && paintMisses >= 2 &&
-        (paintBox.areaFrac >= FILL_AREA || boxNearFrameEdges(paintBox) || looksLikeFills())) {
+    // Граница пропала, но paintBox уже был зафиксирован крупным (>=75% кадра) —
+    // значит картина реально ушла за края кадра, а не потерялась.
+    if (paintBox && paintMisses >= 2 && paintBox.areaFrac >= 0.75) {
       return { fills: true };
     }
   }
@@ -1128,16 +1120,11 @@ function tickDetect() {
     return;
   }
 
-  // Граница не видна. Переход к работе по фичам, если картина уже занимает кадр:
-  //  - paintBox большой / упирается в края кадра (был зафиксирован ранее), ИЛИ
-  //  - граница давно пропала, а paintBox был крупным, ИЛИ
-  //  - картина была замечена (fillHits / большой paintBox), но детектор её не видит
+  // Граница не видна. Переход к работе по фичам только если картина
+  // уже была зафиксирована крупной (>=85% кадра) и мы теряем её стабильно.
   const lostButFilled =
-    (paintBox && (paintBox.areaFrac >= FILL_AREA || boxNearFrameEdges(paintBox) || looksLikeFills())) ||
-    (boundaryVisible === false && paintBox && paintBox.areaFrac >= 0.45 && paintMisses >= 2) ||
-    (boundaryVisible === false && fillHits > 0 && paintMisses >= 2);
-
-  if (lostButFilled && paintMisses >= 2) {
+    paintBox && paintBox.areaFrac >= 0.85 && paintMisses >= 3;
+  if (lostButFilled) {
     transitionToFills(true);
     onPaintingFilled();
     return;
